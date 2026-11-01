@@ -20,3 +20,8 @@ jobs:
       - run: pnpm test
       - run: pnpm typecheck
       - run: pnpm --filter @delivery/ops build
+      - name: Verify Vercel standalone npm build
+        working-directory: apps/ops
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
