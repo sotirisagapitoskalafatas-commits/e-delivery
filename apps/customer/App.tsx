@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Sa
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./src/supabase";
 
-type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[]; logo_image_path: string | null; cover_image_path: string | null };
+type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; prep_time_minutes: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[]; logo_image_path: string | null; cover_image_path: string | null };
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
@@ -62,6 +62,10 @@ export default function App() {
   const [category, setCategory] = useState<StoreCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPostalCode, setSearchPostalCode] = useState("");
+  const [searchAddress, setSearchAddress] = useState("");
+  const [storeTypeFilter, setStoreTypeFilter] = useState("");
+  const [storeSort, setStoreSort] = useState<"recommended" | "delivery" | "preparation" | "minimum">("recommended");
+  const [freeDeliveryOnly, setFreeDeliveryOnly] = useState(false);
   const [serviceTitle, setServiceTitle] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
   const [serviceSubmitting, setServiceSubmitting] = useState(false);
@@ -101,7 +105,7 @@ export default function App() {
     if (!supabase) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
       supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60)
     ]).then(([storeResult, serviceResult]) => {
       if (!active) return;
@@ -138,6 +142,8 @@ export default function App() {
         setAddresses(rows);
         if (rows[0]) {
           setAddressId((current) => current || rows[0]!.id);
+          setSearchPostalCode((current) => current || rows[0]!.postal_code);
+          setSearchAddress((current) => current || `${rows[0]!.line1}, ${rows[0]!.city}`);
           setPickupAddressId((current) => current || rows[0]!.id);
           setDropoffAddressId((current) => current || rows[1]?.id || rows[0]!.id);
         }
@@ -167,7 +173,7 @@ export default function App() {
   const count = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
   const cartSignature = JSON.stringify(Object.entries(cart).sort(([a], [b]) => a.localeCompare(b)));
   const selectedAddress = addresses.find((address) => address.id === addressId);
-  const activePostalCode = selectedAddress?.postal_code ?? (searchPostalCode.length === 5 ? searchPostalCode : "");
+  const activePostalCode = searchPostalCode.length === 5 ? searchPostalCode : selectedAddress?.postal_code ?? "";
   const deliveryFeeCents = store?.base_delivery_fee_cents ?? 0;
   const totalCents = subtotal + deliveryFeeCents;
 
@@ -192,20 +198,37 @@ export default function App() {
     if (store) setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
   }, [store?.id, addressId, cartSignature, fulfillmentMethod]);
   const storeTypesByCategory: Record<StoreCategory, string[]> = {
-    all: ["restaurant", "cafe", "bakery", "supermarket", "convenience", "retail", "pharmacy", "flower_shop", "pet_shop", "other"],
+    all: ["restaurant", "cafe", "bakery", "supermarket", "convenience", "retail", "pharmacy", "flower_shop", "pet_shop", "parcel_point", "other"],
     food: ["restaurant", "cafe", "bakery"],
     groceries: ["supermarket", "convenience"],
-    shops: ["retail", "pharmacy", "flower_shop", "pet_shop", "other"]
+    shops: ["retail", "pharmacy", "flower_shop", "pet_shop", "parcel_point", "service_provider", "other"]
+  };
+  const storeTypeLabels: Record<string, string> = {
+    restaurant: "Εστιατόρια", cafe: "Καφέδες", bakery: "Αρτοποιεία",
+    supermarket: "Supermarket", convenience: "Mini market", retail: "Καταστήματα",
+    pharmacy: "Φαρμακεία", flower_shop: "Ανθοπωλεία", pet_shop: "Pet shops",
+    parcel_point: "Αποστολές", service_provider: "Υπηρεσίες", other: "Λοιπά"
   };
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase("el-GR");
   const visibleStores = stores.filter((candidate) => {
     const inCoverage = !activePostalCode || candidate.service_postal_codes.includes(activePostalCode);
     const inCategory = storeTypesByCategory[category].includes(candidate.store_type);
+    const matchesType = !storeTypeFilter || candidate.store_type === storeTypeFilter;
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
-    return inCoverage && inCategory && matchesSearch;
+    const matchesFreeDelivery = !freeDeliveryOnly || candidate.base_delivery_fee_cents === 0;
+    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery;
   });
+  const sortedStores = [...visibleStores].sort((a, b) => {
+    if (storeSort === "delivery") return a.base_delivery_fee_cents - b.base_delivery_fee_cents || a.name.localeCompare(b.name, "el");
+    if (storeSort === "preparation") return a.prep_time_minutes - b.prep_time_minutes || a.name.localeCompare(b.name, "el");
+    if (storeSort === "minimum") return a.minimum_order_cents - b.minimum_order_cents || a.name.localeCompare(b.name, "el");
+    return a.name.localeCompare(b.name, "el");
+  });
+  const availableTypeFilters = storeTypesByCategory[category].filter((type) =>
+    stores.some((store) => store.store_type === type && (!activePostalCode || store.service_postal_codes.includes(activePostalCode)))
+  );
   const visibleServices = serviceProviders.filter((candidate) => {
-    const inCoverage = !selectedAddress || candidate.service_postal_codes.includes(selectedAddress.postal_code);
+    const inCoverage = !activePostalCode || candidate.service_postal_codes.includes(activePostalCode);
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
     return inCoverage && matchesSearch;
   });
@@ -492,26 +515,108 @@ export default function App() {
             <Text style={styles.photoHeroDescription}>Φαγητό, καφές και καθημερινές αγορές από επιχειρήσεις που εξυπηρετούν την περιοχή σου.</Text>
           </View>
         </View>
-        <TextInput style={styles.input} placeholder="Αναζήτηση καταστημάτων και προϊόντων" value={searchQuery} onChangeText={setSearchQuery} />
-        <View style={styles.categoryRow}>
-          {([{ id: "all", label: "Όλα" }, { id: "food", label: "Φαγητό" }, { id: "groceries", label: "Supermarket" }, { id: "shops", label: "Καταστήματα" }] as const).map((item) => <Pressable key={item.id} style={[styles.categoryChip, category === item.id && styles.categoryChipSelected]} onPress={() => setCategory(item.id)}><Text style={category === item.id ? styles.categoryTextSelected : styles.categoryText}>{item.label}</Text></Pressable>)}
+
+        <View style={styles.addressPrompt}>
+          <View style={styles.addressPromptHeading}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressPromptKicker}>ΠΟΥ ΘΕΛΕΙΣ ΝΑ ΠΑΡΑΔΟΘΕΙ;</Text>
+              <Text style={styles.addressPromptTitle}>Βάλε τη διεύθυνσή σου</Text>
+            </View>
+            {selectedAddress ? <Text style={styles.savedAddressBadge}>Αποθηκευμένη</Text> : null}
+          </View>
+          <TextInput style={styles.addressPromptInput} placeholder="Οδός και αριθμός" value={searchAddress} onChangeText={setSearchAddress} />
+          <TextInput
+            style={styles.addressPromptInput}
+            placeholder="Ταχυδρομικός κώδικας · 5 ψηφία"
+            value={searchPostalCode}
+            onChangeText={(value) => {
+              const next = value.replace(/\D/g, "").slice(0, 5);
+              setSearchPostalCode(next);
+              if (selectedAddress && selectedAddress.postal_code !== next) setAddressId("");
+              setStoreTypeFilter("");
+            }}
+            keyboardType="number-pad"
+            maxLength={5}
+          />
+          <Text style={styles.addressPromptHint}>Η κάλυψη παράδοσης ελέγχεται με βάση τον Τ.Κ. Η οδός δεν αποθηκεύεται μέχρι να επιλέξεις αποθήκευση διεύθυνσης.</Text>
+          {session && addresses.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedAddressRow}>
+            {addresses.slice(0, 5).map((address) => <Pressable key={address.id} style={[styles.savedAddressChip, addressId === address.id && styles.savedAddressChipActive]} onPress={() => {
+              setAddressId(address.id);
+              setSearchPostalCode(address.postal_code);
+              setSearchAddress(`${address.line1}, ${address.city}`);
+              setStoreTypeFilter("");
+            }}>
+              <Text style={addressId === address.id ? styles.savedAddressChipTextActive : styles.savedAddressChipText}>{address.label}</Text>
+            </Pressable>)}
+          </ScrollView> : null}
         </View>
+
+        <TextInput style={styles.input} placeholder="Αναζήτηση καταστήματος ή προϊόντος" value={searchQuery} onChangeText={setSearchQuery} />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.marketTabsRow}>
+          {([
+            { id: "food" as const, label: "Φαγητό & καφές", image: categoryPhotos.restaurant },
+            { id: "groceries" as const, label: "Supermarket", image: categoryPhotos.supermarket },
+            { id: "shops" as const, label: "Καταστήματα", image: categoryPhotos.retail }
+          ]).map((item) => <Pressable key={item.id} style={[styles.marketPhotoTab, category === item.id && styles.marketPhotoTabActive]} onPress={() => { setCategory(item.id); setStoreTypeFilter(""); }}>
+            <Image source={{ uri: item.image }} style={styles.marketPhotoTabImage} />
+            <View style={styles.marketPhotoTabShade} />
+            <Text style={styles.marketPhotoTabLabel}>{item.label}</Text>
+          </Pressable>)}
+        </ScrollView>
+
+        <View style={styles.categoryRow}>
+          <Pressable style={[styles.categoryChip, category === "all" && styles.categoryChipSelected]} onPress={() => { setCategory("all"); setStoreTypeFilter(""); }}><Text style={category === "all" ? styles.categoryTextSelected : styles.categoryText}>Όλα</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "food" && styles.categoryChipSelected]} onPress={() => { setCategory("food"); setStoreTypeFilter(""); }}><Text style={category === "food" ? styles.categoryTextSelected : styles.categoryText}>Φαγητό</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "groceries" && styles.categoryChipSelected]} onPress={() => { setCategory("groceries"); setStoreTypeFilter(""); }}><Text style={category === "groceries" ? styles.categoryTextSelected : styles.categoryText}>Supermarket</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "shops" && styles.categoryChipSelected]} onPress={() => { setCategory("shops"); setStoreTypeFilter(""); }}><Text style={category === "shops" ? styles.categoryTextSelected : styles.categoryText}>Καταστήματα</Text></Pressable>
+        </View>
+
+        <Text style={styles.sectionTitle}>Κατηγορίες</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeFiltersRow}>
+          {availableTypeFilters.map((type) => {
+            const countForType = stores.filter((candidate) => candidate.store_type === type && (!activePostalCode || candidate.service_postal_codes.includes(activePostalCode))).length;
+            return <Pressable key={type} style={[styles.typeFilterChip, storeTypeFilter === type && styles.typeFilterChipActive]} onPress={() => setStoreTypeFilter((current) => current === type ? "" : type)}>
+              <Text style={storeTypeFilter === type ? styles.typeFilterTextActive : styles.typeFilterText}>{storeTypeLabels[type] ?? type}</Text>
+              <Text style={storeTypeFilter === type ? styles.typeFilterCountActive : styles.typeFilterCount}>{countForType}</Text>
+            </Pressable>;
+          })}
+        </ScrollView>
+
         <View style={styles.discoveryHeading}>
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionTitle}>{activePostalCode ? `Καταστήματα που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Ανακάλυψε καταστήματα"}</Text>
-            <Text style={styles.mutedSmall}>{activePostalCode ? `Επιλογές που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Συμπλήρωσε Τ.Κ. για να επιβεβαιώσεις την κάλυψη."}</Text>
+            <Text style={styles.mutedSmall}>{activePostalCode ? `Επιλογές που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Συμπλήρωσε τον Τ.Κ. για να επιβεβαιώσεις την κάλυψη."}</Text>
           </View>
-          <Text style={styles.resultCount}>{visibleStores.length}</Text>
+          <Text style={styles.resultCount}>{sortedStores.length}</Text>
         </View>
-        {!selectedAddress ? <TextInput style={styles.postcodeInput} placeholder="Ταχυδρομικός κώδικας · 5 ψηφία" value={searchPostalCode} onChangeText={(value) => setSearchPostalCode(value.replace(/\D/g, "").slice(0, 5))} keyboardType="number-pad" maxLength={5} /> : null}
-        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
+
+        <View style={styles.marketFilterPanel}>
+          <Text style={styles.filterPanelTitle}>Ταξινόμηση & φίλτρα</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChipsRow}>
+            {([
+              { id: "recommended" as const, label: "Προκαθορισμένο" },
+              { id: "delivery" as const, label: "Delivery" },
+              { id: "preparation" as const, label: "Χρόνος" },
+              { id: "minimum" as const, label: "Ελάχιστη" }
+            ]).map((item) => <Pressable key={item.id} style={[styles.sortChip, storeSort === item.id && styles.sortChipActive]} onPress={() => setStoreSort(item.id)}>
+              <Text style={storeSort === item.id ? styles.sortChipTextActive : styles.sortChipText}>{item.label}</Text>
+            </Pressable>)}
+          </ScrollView>
+          <Pressable style={[styles.freeDeliveryChip, freeDeliveryOnly && styles.freeDeliveryChipActive]} onPress={() => setFreeDeliveryOnly((current) => !current)}>
+            <Text style={styles.freeDeliveryCheck}>{freeDeliveryOnly ? "✓" : "○"}</Text>
+            <Text style={freeDeliveryOnly ? styles.freeDeliveryTextActive : styles.freeDeliveryText}>Δωρεάν delivery</Text>
+          </Pressable>
+          {freeDeliveryOnly && sortedStores.length === 0 ? <Text style={styles.mutedSmall}>Δεν βρέθηκαν καταστήματα με μηδενικό βασικό κόστος παράδοσης για τα τρέχοντα φίλτρα.</Text> : null}
+        </View>
+        {sortedStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση.</Text></View> : sortedStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
           <Image source={{ uri: storePhoto(item) }} style={styles.storePhoto} accessibilityLabel={item.cover_image_path ? `Φωτογραφία ${item.name}` : `Ενδεικτική φωτογραφία κατηγορίας για ${item.name}`} />
-          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
           <Text style={styles.arrow}>›</Text>
         </Pressable>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
         {session ? <>
-          {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => { setAddressId(address.id); setSearchPostalCode(address.postal_code); }}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+          {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => { setAddressId(address.id); setSearchPostalCode(address.postal_code); setSearchAddress(`${address.line1}, ${address.city}`); }}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
           <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
           <TextInput style={styles.input} placeholder="Οδός και αριθμός" value={line1} onChangeText={setLine1} />
           <View style={styles.row}><TextInput style={[styles.input, styles.half]} placeholder="Πόλη" value={city} onChangeText={setCity} /><TextInput style={[styles.input, styles.half]} placeholder="Τ.Κ." keyboardType="number-pad" value={postalCode} onChangeText={setPostalCode} /></View>
@@ -557,6 +662,43 @@ const styles = StyleSheet.create({
   bottomTabIconSelected: { color: "#E31E24", fontSize: 18, fontWeight: "900" },
   bottomTabLabel: { color: "#929BA8", fontSize: 9, fontWeight: "700" },
   bottomTabLabelSelected: { color: "#E31E24", fontSize: 9, fontWeight: "900" },
+  addressPrompt: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E9EDF2", borderRadius: 18, padding: 16, gap: 9 },
+  addressPromptHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  addressPromptKicker: { color: "#9A7C48", fontSize: 8, fontWeight: "900", letterSpacing: 1.1 },
+  addressPromptTitle: { color: "#182740", fontSize: 19, fontWeight: "900", letterSpacing: -0.5, marginTop: 4 },
+  savedAddressBadge: { color: "#16784F", fontSize: 8, fontWeight: "800", backgroundColor: "#EAF8F0", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 99 },
+  addressPromptInput: { backgroundColor: "#F8F9FA", borderWidth: 1, borderColor: "#E8ECF2", borderRadius: 11, paddingHorizontal: 12, paddingVertical: 11, color: "#182740", fontSize: 12 },
+  addressPromptHint: { fontSize: 9, lineHeight: 14, color: "#929BA8" },
+  savedAddressRow: { flexDirection: "row", gap: 7, paddingVertical: 2 },
+  savedAddressChip: { backgroundColor: "#F3F5F7", borderWidth: 1, borderColor: "#E8ECF2", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99 },
+  savedAddressChipActive: { backgroundColor: "#FFF3C8", borderColor: "#FFC928" },
+  savedAddressChipText: { color: "#6F7A8A", fontWeight: "700", fontSize: 9 },
+  savedAddressChipTextActive: { color: "#171717", fontWeight: "900", fontSize: 9 },
+  marketTabsRow: { flexDirection: "row", gap: 9, paddingVertical: 2 },
+  marketPhotoTab: { width: 210, height: 112, borderRadius: 16, overflow: "hidden", justifyContent: "flex-end", padding: 13, backgroundColor: "#222" },
+  marketPhotoTabActive: { borderWidth: 2, borderColor: "#E31E24" },
+  marketPhotoTabImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
+  marketPhotoTabShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(10,10,10,0.38)" },
+  marketPhotoTabLabel: { color: "#FFFFFF", fontSize: 14, fontWeight: "900", textShadowColor: "rgba(0,0,0,.35)", textShadowRadius: 7 },
+  typeFiltersRow: { flexDirection: "row", gap: 7, paddingVertical: 4 },
+  typeFilterChip: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#E5EAF2", backgroundColor: "#FFFFFF", borderRadius: 99, paddingHorizontal: 11, paddingVertical: 8 },
+  typeFilterChipActive: { backgroundColor: "#FFC928", borderColor: "#FFC928" },
+  typeFilterText: { color: "#667184", fontWeight: "700", fontSize: 9 },
+  typeFilterTextActive: { color: "#171717", fontWeight: "900", fontSize: 9 },
+  typeFilterCount: { color: "#929BA8", fontSize: 8 },
+  typeFilterCountActive: { color: "#171717", fontWeight: "900", fontSize: 8 },
+  marketFilterPanel: { padding: 13, borderRadius: 15, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E7EAF0", gap: 9 },
+  filterPanelTitle: { color: "#182740", fontSize: 11, fontWeight: "900" },
+  sortChipsRow: { flexDirection: "row", gap: 7 },
+  sortChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 99, backgroundColor: "#F4F5F7", borderWidth: 1, borderColor: "#E7EAF0" },
+  sortChipActive: { backgroundColor: "#FFF3C8", borderColor: "#FFC928" },
+  sortChipText: { color: "#758093", fontSize: 9, fontWeight: "700" },
+  sortChipTextActive: { color: "#171717", fontSize: 9, fontWeight: "900" },
+  freeDeliveryChip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 99, backgroundColor: "#F4F5F7", borderWidth: 1, borderColor: "#E7EAF0" },
+  freeDeliveryChipActive: { backgroundColor: "#EAF8F0", borderColor: "#A6DDC1" },
+  freeDeliveryCheck: { color: "#178052", fontSize: 12, fontWeight: "900" },
+  freeDeliveryText: { color: "#677285", fontSize: 9, fontWeight: "700" },
+  freeDeliveryTextActive: { color: "#176C49", fontSize: 9, fontWeight: "900" },
   discoveryHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   resultCount: { width: 30, height: 30, borderRadius: 10, backgroundColor: "#FFF0C4", color: "#171717", textAlign: "center", textAlignVertical: "center", overflow: "hidden", fontSize: 12, fontWeight: "900" },
   postcodeInput: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5EAF2", borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, color: "#14223B", marginTop: 8, width: "100%" },
