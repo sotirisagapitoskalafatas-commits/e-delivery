@@ -4,7 +4,7 @@ import { CatalogManager } from "@/components/catalog-manager";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import "./catalog.css";
 
-type StoreRow = { id: string; name: string; city: string };
+type StoreRow = { id: string; name: string; city: string; logo_image_path: string | null; cover_image_path: string | null };
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export default async function CatalogPage() {
 
   const [{ data: profile }, { data: storeRows, error }] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", auth.user.id).maybeSingle(),
-    supabase.from("stores").select("id,name,city").order("name")
+    supabase.from("stores").select("id,name,city,logo_image_path,cover_image_path").order("name")
   ]);
 
   const role = profile?.role ?? "customer";
