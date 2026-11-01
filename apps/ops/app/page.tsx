@@ -48,7 +48,8 @@ const storePhotoByType: Record<string, string> = {
 function publicMediaUrl(path: string | null | undefined) {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base || !path) return null;
-  return `${base.replace(/\\/$/, "")}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const root = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;;
 }
 const categoryPhotos = storePhotoByType;
 const euro = (cents: number) =>
