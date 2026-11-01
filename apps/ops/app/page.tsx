@@ -15,7 +15,8 @@ type StoreRow = {
   created_at: string;
 };
 
-const storeKinds: Record<string, { label: string; icon: string; tone: string }> = {
+const fallbackStoreKind = { label: "Τοπική επιχείρηση", icon: "🏪", tone: "retail" };
+const storeKinds: Record<string, typeof fallbackStoreKind> = {
   restaurant: { label: "Εστιατόριο", icon: "🍽️", tone: "food" },
   cafe: { label: "Καφέ", icon: "☕", tone: "coffee" },
   bakery: { label: "Αρτοποιείο", icon: "🥐", tone: "bakery" },
@@ -27,14 +28,14 @@ const storeKinds: Record<string, { label: string; icon: string; tone: string }> 
   pet_shop: { label: "Pet shop", icon: "🐾", tone: "retail" },
   parcel_point: { label: "Σημείο αποστολών", icon: "📦", tone: "retail" },
   service_provider: { label: "Τοπική υπηρεσία", icon: "🧰", tone: "retail" },
-  other: { label: "Τοπική επιχείρηση", icon: "🏪", tone: "retail" }
+  other: fallbackStoreKind
 };
 
 const euro = (cents: number) =>
   new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
 
 function StoreCard({ store, isNew = false }: { store: StoreRow; isNew?: boolean }) {
-  const kind = storeKinds[store.store_type] ?? storeKinds.other;
+  const kind = storeKinds[store.store_type] ?? fallbackStoreKind;
   return (
     <Link href={`/store/${store.id}`} className="market-store-card">
       <div className={`market-store-art ${kind.tone}`}>
