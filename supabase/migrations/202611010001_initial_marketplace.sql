@@ -272,7 +272,7 @@ returns trigger language plpgsql security definer set search_path = ''
 as $$
 begin
   insert into public.profiles (id, full_name, role)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', ''), 'customer'::public.app_role)
+  values (new.id, left(coalesce(new.raw_user_meta_data ->> 'full_name', ''), 120), 'customer'::public.app_role)
   on conflict (id) do nothing;
   return new;
 end;
@@ -315,6 +315,22 @@ alter table public.payment_transactions enable row level security;
 
 create policy profiles_read_self_or_ops on public.profiles
 for select to authenticated using (id = (select auth.uid()) or private.is_ops_admin());
+
+-- A merchant/courier can see only the customer's basic contact details for an order they fulfil.
+create policy profiles_read_order_participant on public.profiles
+for select to authenticated
+using (
+  exists (
+    select 1 from public.orders o
+    where o.customer_id = profiles.id
+      and (
+        private.is_ops_admin()
+        or private.is_merchant_member(o.store_id, array['owner','manager','staff'])
+        or private.is_assigned_courier(o.id)
+      )
+  )
+);
+
 create policy profiles_update_self on public.profiles
 for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
@@ -322,7 +338,7 @@ create policy merchants_read_member_or_ops on public.merchants
 for select to authenticated
 using (
   private.is_ops_admin()
-  or exists (select 1 from public.merchant_memberships mm where mm.merchant_id = id and mm.user_id = (select auth.uid()))
+  or exists (select 1 from public.merchant_memberships mm where mm.merchant_id = merchants.id and mm.user_id = (select auth.uid()))
 );
 create policy memberships_read_self_or_ops on public.merchant_memberships
 for select to authenticated using (user_id = (select auth.uid()) or private.is_ops_admin());
