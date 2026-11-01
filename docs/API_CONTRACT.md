@@ -28,3 +28,10 @@ The schema now separates `express_deliveries` (parcel requests) from `orders` an
 - `rpc/set_courier_delivery_status(p_assignment_id, p_new_status)`, where new status is `picked_up` or `delivered` in sequence.
 
 RPC exceptions should be mapped to friendly UI messages. Log correlation/order IDs, not access tokens or full delivery addresses.
+
+
+## Express parcel request
+The customer calls `rpc/create_express_delivery_request` with pickup/drop-off address IDs (both must belong to the signed-in customer), two contact names/phones, a short parcel description, size, optional scheduled time and an idempotency key. The server snapshots the owned addresses and creates a `requested` record with no quoted price and no payment. Operations/partner review, quote, acceptance, courier assignment, proof of delivery and payment are separate follow-on workflows; the request must not be presented as a confirmed delivery.
+
+## Local service request
+The customer can insert a `service_bookings` request for a verified active `service_provider` store. The address is stored as a snapshot. This is an enquiry/request, not a confirmed appointment, order or payment. Merchant quote, availability, customer acceptance, booking confirmation and cancellation handling are subsequent workflows.
