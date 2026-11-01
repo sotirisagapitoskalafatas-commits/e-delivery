@@ -370,7 +370,10 @@ using (private.is_ops_admin() or private.is_merchant_member(store_id, array['own
 create policy products_public_catalog_read on public.products
 for select to anon, authenticated
 using (is_available and exists (
-  select 1 from public.stores s where s.id = store_id and s.is_active and s.accepts_orders
+  select 1
+  from public.stores s
+  join public.merchants m on m.id = s.merchant_id
+  where s.id = store_id and s.is_active and s.accepts_orders and m.status = 'active'
 ));
 create policy products_member_read on public.products
 for select to authenticated
