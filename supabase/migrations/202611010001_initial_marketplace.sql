@@ -468,7 +468,209 @@ begin
     where jsonb_typeof(x.value) <> 'object'
       or coalesce(x.value ->> 'product_id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or coalesce(x.value ->> 'quantity', '') !~ '^[0-9]+$'
-      or (x.value ->> 'quantity')::integer not between 1 and 99
+      or case when coalesce(x.value ->> 'quantity', '') ~ '^[0-9]+
+      or char_length(coalesce(x.value ->> 'notes', '')) > 300
+  ) then raise exception 'invalid_order_item'; end if;
+
+  select count(*) into v_item_count from jsonb_array_elements(p_items);
+  select count(*), coalesce(sum(p.price_cents::bigint * (x.value ->> 'quantity')::integer), 0)
+    into v_product_count, v_subtotal
+  from jsonb_array_elements(p_items) x
+  join public.products p
+    on p.id = (x.value ->> 'product_id')::uuid
+   and p.store_id = p_store_id
+   and p.is_available;
+  if v_product_count <> v_item_count then raise exception 'product_unavailable_or_wrong_store'; end if;
+  if v_subtotal < v_store.minimum_order_cents then raise exception 'minimum_order_not_met'; end if;
+  if v_subtotal > 2147483647 then raise exception 'order_total_too_large'; end if;
+
+  v_address_snapshot := jsonb_build_object(
+    'label', v_address.label,
+    'line1', v_address.line1,
+    'line2', v_address.line2,
+    'city', v_address.city,
+    'region', v_address.region,
+    'postal_code', v_address.postal_code,
+    'delivery_instructions', v_address.delivery_instructions
+  );
+  v_total := v_subtotal + v_store.base_delivery_fee_cents;
+  if v_total > 2147483647 then raise exception 'order_total_too_large'; end if;
+
+  v_fingerprint := md5(jsonb_build_object(
+    'store', p_store_id,
+    'address', p_address_id,
+    'fulfillment', p_fulfillment_method,
+    'items', p_items
+  )::text);
+
+  insert into public.orders (
+    customer_id, store_id, status, fulfillment_method, payment_method, payment_status,
+    subtotal_cents, delivery_fee_cents, service_fee_cents, discount_cents, total_cents,
+    delivery_address_snapshot, idempotency_key, request_fingerprint
+  ) values (
+    v_customer_id, p_store_id, 'pending_merchant', p_fulfillment_method, 'cash_on_delivery', 'due_on_delivery',
+    v_subtotal::integer, v_store.base_delivery_fee_cents, 0, 0, v_total::integer,
+    v_address_snapshot, p_idempotency_key, v_fingerprint
+  )
+  on conflict (customer_id, idempotency_key) do nothing
+  returning id into v_order_id;
+
+  if v_order_id is null then
+    select o.id, o.request_fingerprint into v_order_id, v_existing_fingerprint
+    from public.orders o
+    where o.customer_id = v_customer_id and o.idempotency_key = p_idempotency_key;
+    if v_existing_fingerprint is distinct from v_fingerprint then
+      raise exception 'idempotency_key_reused_with_different_payload';
+    end if;
+    return v_order_id;
+  end if;
+
+  insert into public.order_items (
+    order_id, product_id, product_name_snapshot, unit_price_cents, quantity,
+    tax_rate_snapshot, allergens_snapshot, line_total_cents, notes
+  )
+  select
+    v_order_id, p.id, p.name, p.price_cents, (x.value ->> 'quantity')::integer,
+    p.tax_rate, p.allergens, (p.price_cents * (x.value ->> 'quantity')::integer),
+    nullif(x.value ->> 'notes', '')
+  from jsonb_array_elements(p_items) x
+  join public.products p
+    on p.id = (x.value ->> 'product_id')::uuid
+   and p.store_id = p_store_id and p.is_available;
+
+  insert into public.order_events (order_id, actor_user_id, from_status, to_status, reason)
+  values (v_order_id, v_customer_id, null, 'pending_merchant', 'Order placed');
+  return v_order_id;
+end;
+$$;
+revoke all on function public.create_marketplace_order(uuid, uuid, public.fulfillment_method, jsonb, text) from public, anon;
+grant execute on function public.create_marketplace_order(uuid, uuid, public.fulfillment_method, jsonb, text) to authenticated;
+
+create or replace function public.set_merchant_order_status(
+  p_order_id uuid,
+  p_new_status public.order_status,
+  p_reason text default null
+)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_order public.orders%rowtype;
+  v_allowed boolean := false;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  select * into v_order from public.orders where id = p_order_id for update;
+  if not found then raise exception 'order_not_found'; end if;
+  if not (private.is_ops_admin() or private.is_merchant_member(v_order.store_id, array['owner','manager','staff'])) then
+    raise exception 'not_authorized_for_store';
+  end if;
+
+  v_allowed :=
+    (v_order.status = 'pending_merchant' and p_new_status in ('accepted','rejected'))
+    or (v_order.status = 'accepted' and p_new_status = 'preparing')
+    or (v_order.status = 'preparing' and p_new_status = 'ready_for_pickup')
+    or (v_order.status = 'ready_for_pickup' and p_new_status = 'delivered' and v_order.fulfillment_method = 'merchant');
+  if not v_allowed then raise exception 'invalid_order_transition'; end if;
+  if p_new_status = 'rejected' and nullif(trim(coalesce(p_reason,'')), '') is null then
+    raise exception 'rejection_reason_required';
+  end if;
+
+  update public.orders set status = p_new_status where id = p_order_id;
+  insert into public.order_events (order_id, actor_user_id, from_status, to_status, reason)
+  values (p_order_id, auth.uid(), v_order.status, p_new_status, left(p_reason, 300));
+end;
+$$;
+revoke all on function public.set_merchant_order_status(uuid, public.order_status, text) from public, anon;
+grant execute on function public.set_merchant_order_status(uuid, public.order_status, text) to authenticated;
+
+create or replace function public.dispatch_order_to_courier(p_order_id uuid, p_courier_user_id uuid)
+returns uuid language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_order public.orders%rowtype;
+  v_assignment_id uuid;
+begin
+  if auth.uid() is null or not private.is_ops_admin() then raise exception 'ops_admin_required'; end if;
+  select * into v_order from public.orders where id = p_order_id for update;
+  if not found then raise exception 'order_not_found'; end if;
+  if v_order.status <> 'ready_for_pickup' or v_order.fulfillment_method <> 'platform' then
+    raise exception 'order_not_ready_for_platform_dispatch';
+  end if;
+  if not exists (select 1 from public.courier_profiles cp where cp.user_id = p_courier_user_id and cp.status = 'approved') then
+    raise exception 'courier_not_approved';
+  end if;
+
+  insert into public.courier_assignments (order_id, courier_user_id, status)
+  values (p_order_id, p_courier_user_id, 'offered')
+  returning id into v_assignment_id;
+  update public.orders set status = 'courier_assigned' where id = p_order_id;
+  insert into public.order_events (order_id, actor_user_id, from_status, to_status, reason)
+  values (p_order_id, auth.uid(), v_order.status, 'courier_assigned', 'Courier offer created');
+  return v_assignment_id;
+end;
+$$;
+revoke all on function public.dispatch_order_to_courier(uuid, uuid) from public, anon;
+grant execute on function public.dispatch_order_to_courier(uuid, uuid) to authenticated;
+
+create or replace function public.accept_courier_assignment(p_assignment_id uuid)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_assignment public.courier_assignments%rowtype;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  select * into v_assignment from public.courier_assignments
+  where id = p_assignment_id and courier_user_id = auth.uid()
+  for update;
+  if not found then raise exception 'assignment_not_found'; end if;
+  if v_assignment.status <> 'offered' then raise exception 'assignment_not_offered'; end if;
+  update public.courier_assignments set status = 'accepted', accepted_at = now() where id = p_assignment_id;
+end;
+$$;
+revoke all on function public.accept_courier_assignment(uuid) from public, anon;
+grant execute on function public.accept_courier_assignment(uuid) to authenticated;
+
+create or replace function public.set_courier_delivery_status(p_assignment_id uuid, p_new_status text)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_assignment public.courier_assignments%rowtype;
+  v_order public.orders%rowtype;
+  v_next_status public.order_status;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  if p_new_status not in ('picked_up','delivered') then raise exception 'invalid_courier_action'; end if;
+
+  select * into v_assignment from public.courier_assignments
+  where id = p_assignment_id and courier_user_id = auth.uid()
+  for update;
+  if not found then raise exception 'assignment_not_found'; end if;
+  select * into v_order from public.orders where id = v_assignment.order_id for update;
+  if not found then raise exception 'order_not_found'; end if;
+
+  if p_new_status = 'picked_up' then
+    if v_assignment.status <> 'accepted' or v_order.status <> 'courier_assigned' then
+      raise exception 'assignment_not_ready_for_pickup';
+    end if;
+    update public.courier_assignments set status = 'picked_up', picked_up_at = now() where id = p_assignment_id;
+    v_next_status := 'picked_up';
+  else
+    if v_assignment.status <> 'picked_up' or v_order.status <> 'picked_up' then
+      raise exception 'assignment_not_ready_for_delivery';
+    end if;
+    update public.courier_assignments set status = 'delivered', delivered_at = now() where id = p_assignment_id;
+    v_next_status := 'delivered';
+  end if;
+
+  update public.orders set status = v_next_status where id = v_order.id;
+  insert into public.order_events (order_id, actor_user_id, from_status, to_status, reason)
+  values (v_order.id, auth.uid(), v_order.status, v_next_status, 'Courier status update');
+end;
+$$;
+revoke all on function public.set_courier_delivery_status(uuid, text) from public, anon;
+grant execute on function public.set_courier_delivery_status(uuid, text) to authenticated;
+
+commit;
+ then (x.value ->> 'quantity')::integer not between 1 and 99 else true end
       or char_length(coalesce(x.value ->> 'notes', '')) > 300
   ) then raise exception 'invalid_order_item'; end if;
 
