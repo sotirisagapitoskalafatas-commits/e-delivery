@@ -187,7 +187,7 @@ revoke all on function public.submit_partner_application(
 ) from public, anon, authenticated;
 grant execute on function public.submit_partner_application(
   text,text,text,text,text,text,text,text,text,text,text[],text,text,boolean,boolean,boolean,boolean,text
-) to anon, authenticated;
+) to service_role;
 
 create or replace function public.review_partner_application(
   p_application_id uuid,
