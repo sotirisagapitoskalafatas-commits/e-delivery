@@ -720,3 +720,16 @@ html[data-theme="dark"] .explore-subcategories .filter-chip.active{background:#F
 html[data-theme="dark"] .explore-toolbar-copy h2{color:#fff}
 html[data-theme="dark"] .store-card-metadata{border-color:#35383e;color:#b9bec6}
 html[data-theme="dark"] .store-card-cta{border-color:#35383e}
+
+
+.explore-menu-category-section{margin:0 0 24px}
+.explore-menu-category-section .explore-subcategories-heading{margin-bottom:10px}
+.explore-menu-category-chips{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:thin}
+.menu-category-chip{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;padding:9px 13px;border:1px solid #e5e5e7;border-radius:99px;background:#fff;color:#555b64;font-size:9px;font-weight:800}
+.menu-category-chip span{display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#f1f2f3;color:#777d84;font-size:8px}
+.menu-category-chip.active{background:#fff0c4;border-color:#ffc928;color:#171717}
+.menu-category-chip.active span{background:#171717;color:#ffc928}
+html[data-theme="dark"] .menu-category-chip{background:#24262b;border-color:#41444b;color:#ededed}
+html[data-theme="dark"] .menu-category-chip span{background:#3a3d44;color:#d5d7db}
+html[data-theme="dark"] .menu-category-chip.active{background:#ffc928;border-color:#ffc928;color:#171717}
+html[data-theme="dark"] .menu-category-chip.active span{background:#171717;color:#ffc928}
