@@ -14,7 +14,7 @@ create type public.courier_assignment_status as enum ('offered', 'accepted', 're
 
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
-grant usage on schema private to authenticated;
+grant usage on schema private to anon, authenticated;
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -219,6 +219,18 @@ as $$
   );
 $$;
 
+create or replace function private.is_merchant_active(p_merchant_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $
+  select exists (
+    select 1 from public.merchants m
+    where m.id = p_merchant_id and m.status = 'active'
+  );
+$;
+
+revoke all on function private.is_merchant_active(uuid) from public, anon, authenticated;
+grant execute on function private.is_merchant_active(uuid) to anon, authenticated;
+
 create or replace function private.is_merchant_member(p_store_id uuid, p_roles text[] default null)
 returns boolean language sql stable security definer set search_path = ''
 as $$
@@ -346,11 +358,7 @@ for select to authenticated using (user_id = (select auth.uid()) or private.is_o
 create policy stores_public_catalog_read on public.stores
 for select to anon, authenticated
 using (
-  is_active and accepts_orders
-  and exists (
-    select 1 from public.merchants m
-    where m.id = merchant_id and m.status = 'active'
-  )
+  is_active and accepts_orders and private.is_merchant_active(merchant_id)
 );
 create policy stores_member_or_ops_read on public.stores
 for select to authenticated using (private.is_ops_admin() or private.is_merchant_member(id, array['owner','manager','staff']));
@@ -360,8 +368,8 @@ for select to anon, authenticated
 using (is_active and exists (
   select 1
   from public.stores s
-  join public.merchants m on m.id = s.merchant_id
-  where s.id = store_id and s.is_active and s.accepts_orders and m.status = 'active'
+  where s.id = store_id and s.is_active and s.accepts_orders
+    and private.is_merchant_active(s.merchant_id)
 ));
 create policy categories_member_read on public.categories
 for select to authenticated
@@ -372,8 +380,8 @@ for select to anon, authenticated
 using (is_available and exists (
   select 1
   from public.stores s
-  join public.merchants m on m.id = s.merchant_id
-  where s.id = store_id and s.is_active and s.accepts_orders and m.status = 'active'
+  where s.id = store_id and s.is_active and s.accepts_orders
+    and private.is_merchant_active(s.merchant_id)
 ));
 create policy products_member_read on public.products
 for select to authenticated
