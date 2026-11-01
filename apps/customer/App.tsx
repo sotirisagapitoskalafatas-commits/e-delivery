@@ -90,7 +90,7 @@ export default function App() {
     let active = true;
     Promise.all([
       supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
       supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
       supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
       supabase.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
@@ -441,7 +441,15 @@ export default function App() {
           <Pressable style={styles.primary} onPress={placeOrder} disabled={placing || count === 0 || subtotal < store.minimum_order_cents}><Text style={styles.primaryText}>{placing ? "Καταχώρηση…" : "Επιβεβαίωση παραγγελίας"}</Text></Pressable>
         </View>
       </> : <>
-        <View style={styles.hero}><Text style={styles.eyebrow}>GREECE · LOCAL DELIVERY</Text><Text style={styles.heroTitle}>Ό,τι χρειάζεσαι,{"\n"}κοντά σου.</Text><Text style={styles.muted}>Ανακάλυψε καταστήματα και τοπικές επιχειρήσεις που εξυπηρετούν την επιλεγμένη διεύθυνσή σου.</Text></View>
+        <View style={styles.photoHero}>
+          <Image source={{ uri: categoryPhotos.restaurant }} style={styles.photoHeroImage} />
+          <View style={styles.photoHeroShade} />
+          <View style={styles.photoHeroCopy}>
+            <Text style={styles.photoHeroEyebrow}>E-DELIVERY · ΤΟΠΙΚΗ ΑΓΟΡΑ</Text>
+            <Text style={styles.photoHeroTitle}>Ό,τι χρειάζεσαι,{"\n"}κοντά σου.</Text>
+            <Text style={styles.photoHeroDescription}>Φαγητό, καφές και καθημερινές αγορές από επιχειρήσεις που εξυπηρετούν την περιοχή σου.</Text>
+          </View>
+        </View>
         <TextInput style={styles.input} placeholder="Αναζήτηση καταστημάτων και προϊόντων" value={searchQuery} onChangeText={setSearchQuery} />
         <View style={styles.categoryRow}>
           {([{ id: "all", label: "Όλα" }, { id: "food", label: "Φαγητό" }, { id: "groceries", label: "Supermarket" }, { id: "shops", label: "Καταστήματα" }] as const).map((item) => <Pressable key={item.id} style={[styles.categoryChip, category === item.id && styles.categoryChipSelected]} onPress={() => setCategory(item.id)}><Text style={category === item.id ? styles.categoryTextSelected : styles.categoryText}>{item.label}</Text></Pressable>)}
