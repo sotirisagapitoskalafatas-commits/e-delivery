@@ -85,7 +85,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
-      if (next) setShowAuth(false);
+      if (next) { setShowAuth(false); setError(""); }
       else {
         setScreen("stores");
         setStore(null);
@@ -498,7 +498,7 @@ export default function App() {
         </View>
         <View style={styles.discoveryHeading}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.sectionTitle}>Καταστήματα στην περιοχή σου</Text>
+            <Text style={styles.sectionTitle}>{activePostalCode ? `Καταστήματα που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Ανακάλυψε καταστήματα"}</Text>
             <Text style={styles.mutedSmall}>{activePostalCode ? `Επιλογές που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Συμπλήρωσε Τ.Κ. για να επιβεβαιώσεις την κάλυψη."}</Text>
           </View>
           <Text style={styles.resultCount}>{visibleStores.length}</Text>
