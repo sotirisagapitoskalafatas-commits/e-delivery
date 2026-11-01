@@ -61,7 +61,7 @@ begin
   if char_length(trim(coalesce(p_parcel_description,''))) not between 1 and 500 then
     raise exception 'parcel_description_required';
   end if;
-  if p_parcel_size not in ('small','medium','large') then
+  if p_parcel_size is null or p_parcel_size not in ('small','medium','large') then
     raise exception 'invalid_parcel_size';
   end if;
   if p_scheduled_at is not null and p_scheduled_at < now() + interval '30 minutes' then
