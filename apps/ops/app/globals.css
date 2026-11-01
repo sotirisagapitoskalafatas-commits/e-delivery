@@ -164,3 +164,134 @@ html[data-theme="dark"] .market-home .market-theme-toggle,html[data-theme="dark"
 .partner-applications-admin{min-height:100vh;background:#f7f7f8;padding:34px clamp(18px,4vw,55px)}.partner-admin-header{max-width:1400px;margin:0 auto 25px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.partner-admin-header h1{font:900 36px Manrope;letter-spacing:-1.5px;margin:8px 0}.partner-admin-content{max-width:1400px;margin:0 auto}.partner-admin-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:16px 19px;background:#fff;border:1px solid #e8e8ea;border-radius:13px}.partner-admin-count{display:flex;align-items:baseline;gap:8px}.partner-admin-count strong{font:900 23px Manrope}.partner-admin-count span{font-size:9px;color:#858b93}.partner-admin-toolbar select,.partner-admin-review select{height:39px;padding:0 10px;border:1px solid #e6e7e9;border-radius:8px;background:#fff;font-size:9px}.partner-admin-list{display:grid;gap:13px;margin-top:15px}.partner-admin-card{padding:19px;background:#fff;border:1px solid #e7e8ea;border-radius:14px}.partner-admin-card-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid #eee}.partner-admin-type{padding:5px 9px;border-radius:99px;background:#fff1c8;color:#785615;font-size:8px;font-weight:900}.partner-admin-type.courier{background:#ffe9e9;color:#ad2028}.partner-admin-card-head>b{font:900 12px Manrope}.partner-admin-date{font-size:8px;color:#92979e}.partner-admin-status{margin-left:auto;font-size:8px;font-weight:900;color:#b51d24}.partner-admin-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:15px 0}.partner-admin-detail-grid>div{display:grid;gap:5px}.partner-admin-detail-grid small{font-size:7px;letter-spacing:.8px;color:#999fa6;font-weight:900}.partner-admin-detail-grid strong,.partner-admin-detail-grid a{font-size:9px;color:#343a40;overflow-wrap:anywhere}.partner-admin-detail-full{grid-column:1/-1}.partner-admin-review{display:grid;grid-template-columns:1fr 240px;gap:15px;padding-top:14px;border-top:1px solid #eee}.partner-admin-review label{display:grid;gap:7px;font-size:8px;font-weight:900;color:#656b73}.partner-admin-review textarea{min-height:65px;padding:10px;border:1px solid #e5e6e8;border-radius:8px;resize:vertical;font:9px/1.6 "DM Sans",sans-serif}.partner-admin-review>div{display:grid;align-content:start;gap:10px}.partner-admin-review button{height:38px;border:0;border-radius:8px;background:#e31e24;color:#fff;font-size:9px;font-weight:900;cursor:pointer}.partner-admin-review button:disabled{opacity:.5}.partner-admin-message{font-size:9px;color:#16844e}
 @media(max-width:920px){.partner-hero{grid-template-columns:1fr;padding-top:48px}.partner-visual{min-height:340px}.partner-steps-grid{grid-template-columns:repeat(2,1fr)}.merchant-tools-section,.courier-requirements-section{margin-left:18px;margin-right:18px;grid-template-columns:1fr}.partner-application-section{grid-template-columns:1fr}.partner-application-intro{position:static}.partner-benefit-strip{margin:0 18px}.partner-admin-review{grid-template-columns:1fr 210px}}
 @media(max-width:600px){.partner-hero{padding:37px 17px 30px;gap:18px}.partner-hero-copy h1{font-size:39px;letter-spacing:-2px}.partner-hero-copy>p{font-size:11px}.partner-visual{min-height:310px}.partner-visual-backdrop{width:265px;height:250px}.merchant-visual-board{width:275px;min-height:270px;padding:18px}.courier-rider-card{width:265px;min-height:285px}.partner-benefit-strip{grid-template-columns:1fr;padding:15px}.partner-benefit-strip>div+div{border-left:0;border-top:1px solid #eee;padding:12px 0 0}.partner-content-section{padding:48px 17px}.partner-steps-grid{grid-template-columns:1fr}.partner-steps-grid article{min-height:150px}.partner-steps-grid h3{margin-top:14px}.merchant-tools-section,.courier-requirements-section{padding:26px 18px;margin-bottom:45px}.partner-application-section{padding:40px 15px}.partner-application-form{padding:19px}.partner-form-grid{grid-template-columns:1fr}.partner-field-full{grid-column:auto}.partner-bottom-cta{display:block;margin:0 15px 40px;padding:21px}.partner-bottom-cta>a{display:inline-flex;margin-top:15px}.partner-hub-hero{padding:50px 18px 15px}.partner-hub-hero h1{font-size:41px;letter-spacing:-2px}.partner-hub-grid{grid-template-columns:1fr;padding:15px}.partner-hub-card{min-height:270px;padding:22px}.partner-hub-note{margin:0 15px 40px}.partner-admin-applications{padding:20px 12px}.partner-admin-header{align-items:flex-start;flex-direction:column}.partner-admin-header h1{font-size:27px}.partner-admin-detail-grid{grid-template-columns:1fr 1fr}.partner-admin-review{grid-template-columns:1fr}.partner-admin-status{margin-left:0}.partner-admin-card-head{gap:8px}}
+
+
+/* Marketplace discovery journey */
+.market-hero-word-rotator{
+  display:inline-grid;
+  min-width:9ch;
+  min-height:1.08em;
+  overflow:hidden;
+  vertical-align:bottom;
+}
+.market-hero-word-rotator>span{
+  grid-area:1/1;
+  opacity:0;
+  transform:translateY(55%);
+  animation:marketplace-word-cycle 12s ease-in-out infinite;
+  will-change:opacity,transform;
+}
+.market-hero-word-rotator>span:nth-child(1){animation-delay:0s}
+.market-hero-word-rotator>span:nth-child(2){animation-delay:3s}
+.market-hero-word-rotator>span:nth-child(3){animation-delay:6s}
+.market-hero-word-rotator>span:nth-child(4){animation-delay:9s}
+@keyframes marketplace-word-cycle{
+  0%{opacity:0;transform:translateY(55%)}
+  2%{opacity:1;transform:translateY(0)}
+  20%{opacity:1;transform:translateY(0)}
+  22%{opacity:0;transform:translateY(-55%)}
+  100%{opacity:0;transform:translateY(-55%)}
+}
+.market-how-section{padding-top:54px}
+.market-how-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.market-how-card{
+  min-height:220px;
+  position:relative;
+  overflow:hidden;
+  padding:24px;
+  border:1px solid #e8e8ea;
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 12px 30px #17171706;
+}
+.market-how-number{
+  position:absolute;
+  top:18px;
+  right:19px;
+  color:#d8dadd;
+  font:900 12px Manrope,sans-serif;
+  letter-spacing:1px;
+}
+.market-how-icon{
+  width:43px;
+  height:43px;
+  display:grid;
+  place-items:center;
+  border-radius:13px;
+  background:#fff0c9;
+  color:#b51b22;
+  font-size:23px;
+  font-weight:900;
+}
+.market-how-card:nth-child(2) .market-how-icon{background:#ffe8e8}
+.market-how-card:nth-child(3) .market-how-icon{background:#eaf6ef;color:#16844e}
+.market-how-card h3{margin:22px 0 9px;font:900 15px Manrope,sans-serif;letter-spacing:-.3px}
+.market-how-card p{max-width:340px;margin:0;color:#747b84;font-size:10px;line-height:1.8}
+.market-how-action{display:flex;justify-content:flex-end;margin-top:18px}
+.market-how-action .market-cta-button{margin:0}
+.market-faq-section{display:grid;grid-template-columns:.72fr 1.28fr;gap:45px;align-items:start;padding-top:38px;padding-bottom:65px}
+.market-faq-intro h2{margin:9px 0 12px;font:900 clamp(27px,3vw,38px)/1.1 Manrope,sans-serif;letter-spacing:-1.5px}
+.market-faq-intro h2 span{color:#e31e24}
+.market-faq-intro p{max-width:330px;margin:0 0 17px;color:#7b8189;font-size:10px;line-height:1.8}
+.market-faq-list{display:grid;gap:9px}
+.market-faq-item{
+  padding:0 17px;
+  border:1px solid #e9e9eb;
+  border-radius:12px;
+  background:#fff;
+}
+.market-faq-item summary{
+  min-height:58px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:15px;
+  list-style:none;
+  cursor:pointer;
+  color:#25282d;
+  font-size:10px;
+  font-weight:900;
+}
+.market-faq-item summary::-webkit-details-marker{display:none}
+.market-faq-item summary:after{
+  content:"+";
+  flex:0 0 auto;
+  width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  background:#fff2d0;
+  color:#ae1c22;
+  font-size:17px;
+  transition:transform .18s;
+}
+.market-faq-item[open] summary:after{content:"−";background:#e31e24;color:#fff}
+.market-faq-item p{margin:0;padding:0 34px 17px 0;color:#737a83;font-size:9px;line-height:1.8}
+html[data-theme="dark"] .market-home .market-how-card,
+html[data-theme="dark"] .market-home .market-faq-item{background:#1b1d20;border-color:#34373c}
+html[data-theme="dark"] .market-home .market-how-card h3,
+html[data-theme="dark"] .market-home .market-faq-item summary{color:#f1f2f4}
+html[data-theme="dark"] .market-home .market-how-card p,
+html[data-theme="dark"] .market-home .market-faq-item p,
+html[data-theme="dark"] .market-home .market-faq-intro p{color:#b3b7bd}
+html[data-theme="dark"] .market-home .market-faq-item summary:after{background:#393127;color:#ffdb75}
+@media(max-width:820px){
+  .market-faq-section{grid-template-columns:1fr;gap:20px}
+}
+@media(max-width:560px){
+  .market-how-grid{grid-template-columns:1fr}
+  .market-how-card{min-height:180px;padding:20px}
+  .market-how-card h3{margin-top:16px}
+  .market-how-action{justify-content:stretch}
+  .market-how-action .market-cta-button{width:100%;justify-content:center}
+  .market-faq-section{padding-top:26px;padding-bottom:45px}
+  .market-faq-item{padding:0 13px}
+  .market-faq-item summary{min-height:55px;font-size:9px}
+  .market-faq-item p{font-size:8px;padding-right:4px}
+}
+@media(prefers-reduced-motion:reduce){
+  .market-hero-word-rotator>span{animation:none;opacity:0;transform:none;will-change:auto}
+  .market-hero-word-rotator>span:first-child{opacity:1}
+  .market-how-card,.market-faq-item summary:after{transition:none}
+}
