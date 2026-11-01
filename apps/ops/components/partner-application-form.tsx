@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 declare global {
   interface Window {
     turnstile?: {
-      render: (container: HTMLElement, options: { sitekey: string; callback: (token: string) => void; "expired-callback": () => void; "error-callback": () => void; theme: "light"; language: "el" }) => string;
+      render: (container: HTMLElement, options: { sitekey: string; action: string; callback: (token: string) => void; "expired-callback": () => void; "error-callback": () => void; theme: "light"; language: "el" }) => string;
       reset: (widgetId?: string) => void;
       remove: (widgetId: string) => void;
     };
@@ -44,6 +44,7 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
     if (!turnstileReady || !siteKey || !turnstileContainer.current || !window.turnstile || turnstileWidget.current) return;
     turnstileWidget.current = window.turnstile.render(turnstileContainer.current, {
       sitekey: siteKey,
+      action: "partner_application",
       callback: (token) => setTurnstileToken(token),
       "expired-callback": () => setTurnstileToken(""),
       "error-callback": () => setTurnstileToken(""),
