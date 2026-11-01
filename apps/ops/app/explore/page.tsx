@@ -79,13 +79,13 @@ function euro(cents: number) {
 }
 
 function queryHref(params: {
-  category?: string;
-  type?: string;
-  q?: string;
-  address?: string;
-  postalCode?: string;
-  sort?: SortOption;
-  freeDelivery?: boolean;
+  category?: string | undefined;
+  type?: string | undefined;
+  q?: string | undefined;
+  address?: string | undefined;
+  postalCode?: string | undefined;
+  sort?: SortOption | undefined;
+  freeDelivery?: boolean | undefined;
 }) {
   const query = new URLSearchParams();
   if (params.category && params.category !== "all") query.set("category", params.category);
