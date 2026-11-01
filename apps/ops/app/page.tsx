@@ -109,7 +109,11 @@ export default async function HomePage() {
         <div className="market-hero-inner">
           <div className="market-hero-copy">
             <div className="market-eyebrow"><span /> E-DELIVERY · Η ΑΓΟΡΑ ΤΗΣ ΓΕΙΤΟΝΙΑΣ ΣΟΥ</div>
-            <h1>Ο καφές σου.<br />Το φαγητό σου.<br /><span>Όλα πιο κοντά.</span></h1>
+            <h1 aria-label="Ανακάλυψε φαγητό, καφέ, αγορές και προϊόντα στη γειτονιά σου. Όλα πιο κοντά.">
+              Βρες <span className="market-hero-word-rotator" aria-hidden="true">
+                <span>φαγητό</span><span>καφέ</span><span>αγορές</span><span>προϊόντα</span>
+              </span><br />στη γειτονιά σου.<br /><span>Όλα πιο κοντά.</span>
+            </h1>
             <p>Ανακάλυψε συνεργαζόμενα καταστήματα στην περιοχή σου. Δες κόστος παράδοσης, ελάχιστη παραγγελία και χρόνο προετοιμασίας πριν επιλέξεις.</p>
             <form className="market-search" action="/explore" method="get">
               <label className="market-search-field">
@@ -201,6 +205,65 @@ export default async function HomePage() {
           <div className="market-store-grid">{latestStores.slice(0, 6).map((store) => <StoreCard key={store.id} store={store} isNew />)}</div>
         </section>
       ) : null}
+
+      <section className="market-section market-how-section" id="how-it-works">
+        <div className="market-section-heading">
+          <div><span className="market-section-kicker">ΑΠΛΑ ΚΑΙ ΚΑΘΑΡΑ</span><h2>Από την αναζήτηση <span>στην παράδοση.</span></h2></div>
+          <span className="market-section-note">Ξέρεις από πριν τι προσφέρει κάθε κατάστημα και ποια επιλογή παράδοσης είναι διαθέσιμη.</span>
+        </div>
+        <div className="market-how-grid">
+          <article className="market-how-card">
+            <span className="market-how-number">01</span>
+            <span className="market-how-icon" aria-hidden="true">⌖</span>
+            <h3>Επίλεξε περιοχή</h3>
+            <p>Βάλε τον 5ψήφιο ταχυδρομικό κώδικά σου για να δεις ενεργά καταστήματα που εξυπηρετούν την περιοχή σου.</p>
+          </article>
+          <article className="market-how-card">
+            <span className="market-how-number">02</span>
+            <span className="market-how-icon" aria-hidden="true">▦</span>
+            <h3>Ανακάλυψε τον κατάλογο</h3>
+            <p>Δες διαθέσιμα προϊόντα, τιμές, ελάχιστη παραγγελία και κόστος παράδοσης πριν προσθέσεις στο καλάθι.</p>
+          </article>
+          <article className="market-how-card">
+            <span className="market-how-number">03</span>
+            <span className="market-how-icon" aria-hidden="true">➜</span>
+            <h3>Ολοκλήρωσε με σιγουριά</h3>
+            <p>Συνδέσου, επίλεξε διεύθυνση και έναν από τους τρόπους παράδοσης που υποστηρίζει το κατάστημα. Πληρώνεις με μετρητά κατά την παράδοση.</p>
+          </article>
+        </div>
+        <div className="market-how-action"><Link href="/explore" className="market-cta-button">Βρες καταστήματα <span>→</span></Link></div>
+      </section>
+
+      <section className="market-section market-faq-section" id="faq">
+        <div className="market-faq-intro">
+          <span className="market-section-kicker">ΧΡΗΣΙΜΕΣ ΠΛΗΡΟΦΟΡΙΕΣ</span>
+          <h2>Έχεις απορίες;<br /><span>Ξεκίνα από εδώ.</span></h2>
+          <p>Οι βασικές απαντήσεις για κάλυψη περιοχών, παραγγελίες και πληρωμές.</p>
+          <Link href="/explore" className="market-text-link">Ανακάλυψε καταστήματα <span>→</span></Link>
+        </div>
+        <div className="market-faq-list">
+          <details className="market-faq-item">
+            <summary>Πώς ξέρω αν εξυπηρετείται ο Τ.Κ. μου;</summary>
+            <p>Συμπλήρωσε τον 5ψήφιο ταχυδρομικό κώδικα στην αναζήτηση. Θα εμφανιστούν μόνο τα ενεργά καταστήματα που έχουν δηλώσει κάλυψη για τον συγκεκριμένο Τ.Κ.</p>
+          </details>
+          <details className="market-faq-item">
+            <summary>Πώς γίνεται η πληρωμή;</summary>
+            <p>Αυτή τη στιγμή οι online παραγγελίες του E-DELIVERY υποστηρίζουν πληρωμή με μετρητά κατά την παράδοση. Οι online πληρωμές δεν είναι ακόμη διαθέσιμες.</p>
+          </details>
+          <details className="market-faq-item">
+            <summary>Ποιος παραδίδει την παραγγελία;</summary>
+            <p>Ανάλογα με το κατάστημα, μπορεί να είναι διαθέσιμο το δίκτυο E-DELIVERY, η διανομή του καταστήματος ή ανεξάρτητος συνεργάτης. Στο checkout εμφανίζονται μόνο οι ενεργές επιλογές.</p>
+          </details>
+          <details className="market-faq-item">
+            <summary>Χρειάζεται να δημιουργήσω λογαριασμό;</summary>
+            <p>Ναι. Για να ολοκληρώσεις την παραγγελία, συνδέεσαι στον λογαριασμό σου και επιλέγεις ή προσθέτεις διεύθυνση παράδοσης.</p>
+          </details>
+          <details className="market-faq-item">
+            <summary>Υπάρχει ελάχιστη αξία παραγγελίας;</summary>
+            <p>Κάθε κατάστημα μπορεί να ορίζει το δικό του ελάχιστο καλάθι. Το ποσό εμφανίζεται πριν ολοκληρώσεις την παραγγελία και ελέγχεται ξανά στο checkout.</p>
+          </details>
+        </div>
+      </section>
 
       <section className="market-partner-cta">
         <div><span className="market-section-kicker">E-DELIVERY PARTNERS</span><h2>Έχεις κατάστημα;<br /><span>Γίνε μέρος της διαδρομής.</span></h2><p>Γνώρισε την πλατφόρμα συνεργατών και διαχειρίσου τα προϊόντα και τις παραγγελίες του καταστήματός σου.</p></div>
