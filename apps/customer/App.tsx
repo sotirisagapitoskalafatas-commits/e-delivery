@@ -524,7 +524,7 @@ export default function App() {
             </View>
             {selectedAddress ? <Text style={styles.savedAddressBadge}>Αποθηκευμένη</Text> : null}
           </View>
-          <TextInput style={styles.addressPromptInput} placeholder="Οδός και αριθμός" value={searchAddress} onChangeText={setSearchAddress} />
+          <TextInput style={styles.addressPromptInput} placeholder="Οδός και αριθμός" value={searchAddress} onChangeText={(value) => { setSearchAddress(value); if (selectedAddress && value.trim() !== `${selectedAddress.line1}, ${selectedAddress.city}`) setAddressId(""); }} />
           <TextInput
             style={styles.addressPromptInput}
             placeholder="Ταχυδρομικός κώδικας · 5 ψηφία"
