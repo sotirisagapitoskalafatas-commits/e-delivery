@@ -28,7 +28,7 @@ export default async function CatalogPage() {
   const stores = (storeRows ?? []) as StoreRow[];
   return <main className="catalog-page">
     <header className="catalog-page-header">
-      <div><Link className="brand-mark" href="/">DELIVERY<span> / OPS</span></Link><p className="eyebrow">MERCHANT WORKSPACE</p><h1>Διαχείριση καταλόγου</h1><p className="muted">Πρόσθεσε και ενημέρωσε τα προϊόντα των καταστημάτων που διαχειρίζεσαι.</p></div>
+      <div><Link className="brand-mark" href="/">e-delivery<span> / OPS</span></Link><p className="eyebrow">MERCHANT WORKSPACE</p><h1>Διαχείριση καταλόγου</h1><p className="muted">Πρόσθεσε και ενημέρωσε τα προϊόντα των καταστημάτων που διαχειρίζεσαι.</p></div>
       <Link className="secondary-button" href="/">Πίσω στις παραγγελίες</Link>
     </header>
     {error ? <p className="catalog-message">Δεν ήταν δυνατή η φόρτωση καταστημάτων. Έλεγξε RLS και membership.</p> : null}

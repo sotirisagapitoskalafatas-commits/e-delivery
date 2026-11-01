@@ -168,11 +168,11 @@ export default function App() {
     await loadOrders();
   }
 
-  if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#246BFE" /></SafeAreaView>;
-  if (!supabase) return <SafeAreaView style={styles.center}><Text style={styles.title}>Delivery</Text><Text style={styles.muted}>Ρύθμισε τα EXPO_PUBLIC_SUPABASE variables.</Text></SafeAreaView>;
+  if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#E31E24" /></SafeAreaView>;
+  if (!supabase) return <SafeAreaView style={styles.center}><Text style={styles.title}>E-DELIVERY</Text><Text style={styles.muted}>Ρύθμισε τα EXPO_PUBLIC_SUPABASE variables.</Text></SafeAreaView>;
 
   if (!session) return <SafeAreaView style={styles.safe}><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}>
-    <Text style={styles.brand}>DELIVERY</Text><Text style={styles.title}>Ό,τι χρειάζεσαι, κοντά σου.</Text><Text style={styles.muted}>Συνδέσου για να ανακαλύψεις καταστήματα στην περιοχή σου.</Text>
+    <Text style={styles.brand}>e-delivery</Text><Text style={styles.title}>Ό,τι χρειάζεσαι, κοντά σου.</Text><Text style={styles.muted}>Συνδέσου για να ανακαλύψεις καταστήματα στην περιοχή σου.</Text>
     <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder="Email" value={email} onChangeText={setEmail} />
     <TextInput style={styles.input} secureTextEntry placeholder="Κωδικός" value={password} onChangeText={setPassword} />
     {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -182,7 +182,7 @@ export default function App() {
 
   return <SafeAreaView style={styles.safe}>
     <View style={styles.header}>
-      <View><Text style={styles.brand}>DELIVERY</Text><Text style={styles.mutedSmall}>Η γειτονιά σου, σε ένα app</Text></View>
+      <View><Text style={styles.brand}>e-delivery</Text><Text style={styles.mutedSmall}>Η γειτονιά σου, σε ένα app</Text></View>
       <View style={styles.headerActions}>
         <Pressable onPress={() => { setStore(null); setScreen("stores"); }}><Text style={screen === "stores" ? styles.navSelected : styles.navLink}>Καταστήματα</Text></Pressable>
         <Pressable onPress={() => { setStore(null); setScreen("orders"); void loadOrders(); }}><Text style={screen === "orders" ? styles.navSelected : styles.navLink}>Παραγγελίες ({orders.length})</Text></Pressable>
@@ -242,37 +242,37 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F5F7FB" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#F5F7FB" },
+  safe: { flex: 1, backgroundColor: "#F7F7F8" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#F7F7F8" },
   authWrap: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
   header: { paddingHorizontal: 22, paddingVertical: 14, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   navLink: { color: "#7E899C", fontSize: 11, fontWeight: "700" },
-  navSelected: { color: "#246BFE", fontSize: 11, fontWeight: "900" },
+  navSelected: { color: "#E31E24", fontSize: 11, fontWeight: "900" },
   content: { padding: 20, paddingBottom: 48, gap: 12 },
-  brand: { color: "#246BFE", fontWeight: "900", letterSpacing: 1.5, fontSize: 13 },
+  brand: { color: "#E31E24", fontWeight: "900", letterSpacing: 1.5, fontSize: 13 },
   title: { color: "#14223B", fontSize: 30, fontWeight: "800", letterSpacing: -1.1 },
-  hero: { padding: 22, borderRadius: 24, backgroundColor: "#EAF1FF", gap: 8, marginBottom: 10 },
+  hero: { padding: 22, borderRadius: 24, backgroundColor: "#FFF3C8", gap: 8, marginBottom: 10 },
   heroTitle: { fontSize: 34, lineHeight: 38, fontWeight: "900", color: "#14223B", letterSpacing: -1.4 },
-  eyebrow: { color: "#246BFE", fontSize: 10, fontWeight: "800", letterSpacing: 1.5 },
+  eyebrow: { color: "#E31E24", fontSize: 10, fontWeight: "800", letterSpacing: 1.5 },
   muted: { color: "#7E899C", fontSize: 13, lineHeight: 20 },
   mutedSmall: { color: "#8490A3", fontSize: 11, lineHeight: 16 },
   input: { backgroundColor: "white", borderWidth: 1, borderColor: "#E5EAF2", borderRadius: 13, paddingHorizontal: 14, paddingVertical: 13, color: "#14223B", marginTop: 8, flex: 1 },
-  primary: { backgroundColor: "#246BFE", padding: 15, alignItems: "center", borderRadius: 13, marginTop: 10 },
+  primary: { backgroundColor: "#E31E24", padding: 15, alignItems: "center", borderRadius: 13, marginTop: 10 },
   primaryText: { color: "white", fontWeight: "800" },
   secondary: { padding: 14, borderRadius: 13, backgroundColor: "white", alignItems: "center", borderWidth: 1, borderColor: "#E5EAF2" },
-  secondaryText: { color: "#246BFE", fontWeight: "700" },
+  secondaryText: { color: "#E31E24", fontWeight: "700" },
   error: { color: "#B83D45", fontSize: 12 },
-  logout: { color: "#246BFE", fontWeight: "700", fontSize: 12 },
+  logout: { color: "#E31E24", fontWeight: "700", fontSize: 12 },
   sectionTitle: { marginTop: 16, color: "#192943", fontSize: 17, fontWeight: "800" },
   store: { flexDirection: "row", alignItems: "center", gap: 14, padding: 15, borderRadius: 17, backgroundColor: "white", borderWidth: 1, borderColor: "#E9EDF4" },
-  storeIcon: { width: 52, height: 52, borderRadius: 15, backgroundColor: "#EEF3FF", alignItems: "center", justifyContent: "center" },
+  storeIcon: { width: 52, height: 52, borderRadius: 15, backgroundColor: "#FFF3C8", alignItems: "center", justifyContent: "center" },
   storeEmoji: { fontSize: 24 }, storeName: { fontWeight: "800", color: "#182740", fontSize: 15 }, arrow: { fontSize: 28, color: "#9BA8BA" },
   product: { flexDirection: "row", alignItems: "center", paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: "#E8ECF2", gap: 12 },
-  productName: { fontSize: 14, fontWeight: "700", color: "#182740" }, price: { fontSize: 13, fontWeight: "800", color: "#246BFE", marginTop: 4 },
-  addButton: { borderWidth: 1, borderColor: "#D8E4FF", borderRadius: 10, padding: 9 }, addText: { fontSize: 11, fontWeight: "800", color: "#246BFE" },
-  back: { color: "#246BFE", fontWeight: "700" }, address: { backgroundColor: "white", padding: 13, borderRadius: 12, borderWidth: 1, borderColor: "#E5EAF2", marginTop: 7 },
-  addressSelected: { borderColor: "#246BFE", backgroundColor: "#F2F6FF" }, row: { flexDirection: "row", gap: 8 }, half: { minWidth: 0 },
+  productName: { fontSize: 14, fontWeight: "700", color: "#182740" }, price: { fontSize: 13, fontWeight: "800", color: "#E31E24", marginTop: 4 },
+  addButton: { borderWidth: 1, borderColor: "#FFD967", borderRadius: 10, padding: 9 }, addText: { fontSize: 11, fontWeight: "800", color: "#E31E24" },
+  back: { color: "#E31E24", fontWeight: "700" }, address: { backgroundColor: "white", padding: 13, borderRadius: 12, borderWidth: 1, borderColor: "#E5EAF2", marginTop: 7 },
+  addressSelected: { borderColor: "#E31E24", backgroundColor: "#FFF9E8" }, row: { flexDirection: "row", gap: 8 }, half: { minWidth: 0 },
   cart: { backgroundColor: "white", borderRadius: 18, padding: 17, marginTop: 16, borderWidth: 1, borderColor: "#E5EAF2" },
   total: { color: "#14223B", fontSize: 18, fontWeight: "900", marginVertical: 8 },
   priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
@@ -280,8 +280,8 @@ const styles = StyleSheet.create({
   totalLabel: { color: "#14223B", fontSize: 14, fontWeight: "900" },
   orderCard: { backgroundColor: "white", padding: 16, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 6 },
   orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  orderStatus: { color: "#246BFE", fontWeight: "800", fontSize: 10, textTransform: "capitalize" },
+  orderStatus: { color: "#E31E24", fontWeight: "800", fontSize: 10, textTransform: "capitalize" },
   empty: { padding: 20, backgroundColor: "white", borderRadius: 14, gap: 6 },
   confirm: { padding: 18, backgroundColor: "#E9F8F0", borderRadius: 16, gap: 7 }, confirmTitle: { color: "#16784F", fontSize: 17, fontWeight: "900" },
-  link: { color: "#246BFE", fontWeight: "800", marginTop: 7 }
+  link: { color: "#E31E24", fontWeight: "800", marginTop: 7 }
 });

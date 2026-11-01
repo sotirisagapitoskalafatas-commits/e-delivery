@@ -76,12 +76,12 @@ export default function App() {
     else await loadTasks();
   }
 
-  if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator color="#246BFE" size="large" /></SafeAreaView>;
-  if (!supabase) return <SafeAreaView style={styles.center}><Text style={styles.title}>Delivery Courier</Text><Text style={styles.muted}>Ρύθμισε τα EXPO_PUBLIC_SUPABASE variables.</Text></SafeAreaView>;
+  if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator color="#E31E24" size="large" /></SafeAreaView>;
+  if (!supabase) return <SafeAreaView style={styles.center}><Text style={styles.title}>E-DELIVERY Courier</Text><Text style={styles.muted}>Ρύθμισε τα EXPO_PUBLIC_SUPABASE variables.</Text></SafeAreaView>;
 
   if (!session) return <SafeAreaView style={styles.center}>
     <View style={styles.authCard}>
-      <Text style={styles.brand}>DELIVERY / COURIER</Text>
+      <Text style={styles.brand}>e-delivery / COURIER</Text>
       <Text style={styles.title}>Έτοιμος για διαδρομή;</Text>
       <TextInput style={styles.input} placeholder="Email" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
       <TextInput style={styles.input} placeholder="Κωδικός" secureTextEntry value={password} onChangeText={setPassword} />
@@ -92,7 +92,7 @@ export default function App() {
 
   return <SafeAreaView style={styles.safe}>
     <View style={styles.header}>
-      <View><Text style={styles.brand}>DELIVERY / COURIER</Text><Text style={styles.title}>Οι διαδρομές μου</Text></View>
+      <View><Text style={styles.brand}>e-delivery / COURIER</Text><Text style={styles.title}>Οι διαδρομές μου</Text></View>
       <Pressable onPress={() => supabase.auth.signOut()}><Text style={styles.link}>Έξοδος</Text></Pressable>
     </View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -122,23 +122,23 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F4F7FB" },
-  center: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#F4F7FB" },
+  safe: { flex: 1, backgroundColor: "#F7F7F8" },
+  center: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#F7F7F8" },
   authCard: { backgroundColor: "white", borderRadius: 22, padding: 24, gap: 12 },
   header: { backgroundColor: "white", padding: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   list: { padding: 18, gap: 14, flexGrow: 1 },
-  brand: { fontSize: 11, fontWeight: "900", color: "#246BFE", letterSpacing: 1.4 },
+  brand: { fontSize: 11, fontWeight: "900", color: "#E31E24", letterSpacing: 1.4 },
   title: { fontSize: 26, color: "#15243E", fontWeight: "900", marginTop: 9 },
   muted: { color: "#8792A5", fontSize: 12, lineHeight: 18 },
   input: { borderWidth: 1, borderColor: "#E4EAF2", borderRadius: 12, padding: 14, backgroundColor: "white" },
-  primary: { backgroundColor: "#246BFE", borderRadius: 12, padding: 14, alignItems: "center", marginTop: 12 },
+  primary: { backgroundColor: "#E31E24", borderRadius: 12, padding: 14, alignItems: "center", marginTop: 12 },
   primaryText: { color: "white", fontWeight: "800" },
-  link: { color: "#246BFE", fontWeight: "700" },
+  link: { color: "#E31E24", fontWeight: "700" },
   error: { color: "#B43D45", padding: 14, fontSize: 12 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 36, backgroundColor: "white", borderRadius: 16, marginTop: 20, gap: 10 },
   card: { backgroundColor: "white", borderRadius: 18, padding: 18, borderWidth: 1, borderColor: "#E8EDF4", gap: 10 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  tag: { color: "#246BFE", backgroundColor: "#EFF4FF", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, overflow: "hidden", fontSize: 9, fontWeight: "900" },
+  tag: { color: "#E31E24", backgroundColor: "#FFF3C8", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, overflow: "hidden", fontSize: 9, fontWeight: "900" },
   amount: { color: "#172945", fontWeight: "900", fontSize: 16 },
   cardTitle: { color: "#172945", fontSize: 16, fontWeight: "800" },
   address: { color: "#55647A", fontSize: 13, lineHeight: 20 }

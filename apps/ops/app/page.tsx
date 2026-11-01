@@ -23,7 +23,7 @@ export default async function HomePage() {
 
   if (!supabase) {
     return <main className="setup-shell"><section className="setup-card">
-      <span className="brand-mark">DELIVERY<span> / OPS</span></span>
+      <span className="brand-mark">e-delivery<span> / OPS</span></span>
       <p className="eyebrow">PROJECT FOUNDATION</p>
       <h1>Το κέντρο λειτουργίας του delivery.</h1>
       <p className="muted">Η εφαρμογή συνδέεται με Supabase για αυθεντικοποίηση, παραγγελίες και δικαιώματα ανά ρόλο.</p>
@@ -39,7 +39,7 @@ export default async function HomePage() {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) {
     return <main className="setup-shell"><section className="setup-card">
-      <span className="brand-mark">DELIVERY<span> / OPS</span></span>
+      <span className="brand-mark">e-delivery<span> / OPS</span></span>
       <p className="eyebrow">OPERATIONS</p><h1>Η λειτουργία, σε ένα σημείο.</h1>
       <p className="muted">Σύνδεση για εξουσιοδοτημένους συνεργάτες.</p>
       <Link className="primary-button inline-button" href="/login">Σύνδεση</Link>
@@ -61,7 +61,7 @@ export default async function HomePage() {
 
   if (!authorized) {
     return <main className="setup-shell"><section className="setup-card">
-      <span className="brand-mark">DELIVERY<span> / OPS</span></span>
+      <span className="brand-mark">e-delivery<span> / OPS</span></span>
       <p className="eyebrow">ACCESS CONTROL</p><h1>Δεν υπάρχει δικαίωμα πρόσβασης.</h1>
       <p className="muted">Ο λογαριασμός σου είναι συνδεδεμένος, αλλά δεν έχει ενεργό ρόλο καταστήματος ή λειτουργίας. Επικοινώνησε με τον διαχειριστή.</p>
       <p className="tiny-note">Account: {auth.user.email ?? auth.user.id}</p>
@@ -72,7 +72,7 @@ export default async function HomePage() {
 
   return <main className="dashboard-shell">
     <aside className="sidebar">
-      <Link className="brand-mark" href="/">DELIVERY<span> / OPS</span></Link>
+      <Link className="brand-mark" href="/">e-delivery<span> / OPS</span></Link>
       <p className="sidebar-label">WORKSPACE</p>
       <a className="nav-item active" href="#overview">Επισκόπηση</a>
       <a className="nav-item" href="#orders">Παραγγελίες</a>
@@ -81,7 +81,7 @@ export default async function HomePage() {
       <div className="sidebar-bottom"><span className="avatar">{(profile?.full_name ?? auth.user.email ?? "U").slice(0, 1).toUpperCase()}</span><div><strong>{profile?.full_name ?? "Χρήστης"}</strong><small>{role}</small></div></div>
     </aside>
     <section className="dashboard-main">
-      <header className="topbar"><div><p className="eyebrow">ATHENS OPERATIONS</p><h1>Καλημέρα{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}.</h1><p className="muted capitalize">{today}</p></div><form action="/api/auth/signout" method="post"><button className="secondary-button" type="submit">Αποσύνδεση</button></form></header>
+      <header className="topbar"><div><p className="eyebrow">GREECE OPERATIONS</p><h1>Καλημέρα{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}.</h1><p className="muted capitalize">{today}</p></div><form action="/api/auth/signout" method="post"><button className="secondary-button" type="submit">Αποσύνδεση</button></form></header>
       <section className="metric-grid" id="overview">
         <article className="metric-card"><span>Πρόσφατες παραγγελίες</span><strong>{ordersError ? "—" : rows.length}</strong><small>Τελευταίες 12 εγγραφές που είναι ορατές με βάση το ρόλο</small></article>
         <article className="metric-card"><span>Καταστήματα</span><strong>{storeCount ?? "—"}</strong><small>Εγγραφές ορατές στον λογαριασμό</small></article>
@@ -92,7 +92,7 @@ export default async function HomePage() {
         {ordersError ? <div className="notice error">Δεν ήταν δυνατή η ανάγνωση παραγγελιών. Έλεγξε migration, grants και RLS.</div> : rows.length === 0 ? <div className="empty-state"><div className="empty-icon">↗</div><h3>Δεν υπάρχουν ακόμη παραγγελίες</h3><p>Όταν ολοκληρωθεί η πρώτη πραγματική παραγγελία, θα εμφανιστεί εδώ.</p></div> : <div className="table-wrap"><table><thead><tr><th>Παραγγελία</th><th>Κατάστημα</th><th>Κατάσταση</th><th>Fulfilment</th><th>Σύνολο</th><th>Ώρα</th><th>Ενέργειες</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td className="mono">#{row.id.slice(0, 8).toUpperCase()}</td><td>{row.store?.name ?? "—"}</td><td><span className="status-pill">{row.status.replaceAll("_", " ")}</span></td><td>{row.fulfillment_method === "platform" ? "Διανομέας πλατφόρμας" : "Διανομή καταστήματος"}</td><td>{money(row.total_cents, row.currency)}</td><td>{new Date(row.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</td><td><OrderActions orderId={row.id} status={row.status} fulfillmentMethod={row.fulfillment_method} canManage={canManage} canDispatch={canDispatch} /></td></tr>)}</tbody></table></div>}
       </section>
       <section className="lower-grid">
-        <article className="panel" id="stores"><p className="eyebrow">MERCHANT NETWORK</p><h2>Καταστήματα</h2><p className="muted">Η ενεργοποίηση καταστημάτων γίνεται μετά από έλεγχο και επιβεβαίωση συνεργασίας.</p><span className="subtle-link">Η διαχείριση καταλόγου είναι επόμενο build increment.</span></article>
+        <article className="panel" id="stores"><p className="eyebrow">MERCHANT NETWORK</p><h2>Καταστήματα</h2><p className="muted">Εγγραφή, επαλήθευση, καταστήματα και κάλυψη ανά περιοχή.</p><span className="subtle-link">Διαχείριση καταλόγου</span></article>
         <article className="panel" id="couriers"><p className="eyebrow">DELIVERY FLEET</p><h2>Διανομείς</h2><p className="muted">Οι αναθέσεις πραγματοποιούνται μόνο σε εγκεκριμένους διανομείς και καταγράφονται στο ιστορικό παραγγελίας.</p><span className="subtle-link">Το dispatch board είναι επόμενο build increment.</span></article>
       </section>
       <footer className="footer-note">Delivery Platform · Operational data only · Οι ώρες εμφανίζονται σε τοπική ώρα συσκευής.</footer>
