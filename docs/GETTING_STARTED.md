@@ -11,9 +11,11 @@
 ```bash
 corepack enable
 pnpm install
-cp .env.example .env.local
+cp apps/ops/.env.example apps/ops/.env.local
+cp apps/customer/.env.example apps/customer/.env
+cp apps/courier/.env.example apps/courier/.env
 ```
-Fill in the Supabase URL and publishable key. Copy the Expo-prefixed variables into the environment for each mobile app. Publishable keys are designed for client use; secret/service-role keys are not.
+Fill in the Supabase URL and publishable key in each app's environment file. The web workspace reads `apps/ops/.env.local`; Expo reads each mobile app's `.env` when started from that workspace. Publishable keys are designed for client use; secret/service-role keys are not.
 
 ## Database
 Create a new Supabase project for this product. Do not point the migration at another live CRM or unrelated project. Review `supabase/migrations/202611010001_initial_marketplace.sql`, then apply it using the Supabase CLI or SQL editor. Run the Supabase security and performance advisors afterwards. Test policies with separate customer, merchant, courier and operations accounts.
