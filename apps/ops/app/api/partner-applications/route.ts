@@ -14,6 +14,9 @@ type ApplicationPayload = {
 
 export async function POST(request: Request) {
   const siteverifySecret = process.env.TURNSTILE_SECRET_KEY;
+  if (process.env.PARTNER_APPLICATIONS_ENABLED !== "true") {
+    return NextResponse.json({ success: false, error: "applications_not_open" }, { status: 503 });
+  }
   if (!siteverifySecret || !process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
     return NextResponse.json({ success: false, error: "turnstile_not_configured" }, { status: 503 });
   }

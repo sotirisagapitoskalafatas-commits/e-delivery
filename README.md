@@ -56,3 +56,10 @@ Use a **dedicated Supabase project**. Do not apply these migrations to an unrela
 ## Business principle
 
 Win through a better customer experience, a fairer merchant relationship, transparent courier economics and strong local delivery density. Measure contribution margin per completed order—not gross order value alone.
+
+
+## Partner applications
+
+Merchant and courier interest forms use the additive migration `supabase/migrations/202611010005_partner_applications.sql`. Apply it in the E-DELIVERY Supabase SQL Editor before enabling the forms. The OPS-only review queue is available at `/ops/applications`.
+
+Do not enable public applications until the applicant privacy notice is completed and reviewed. The current `/privacy` page explicitly identifies the missing controller identity/contact details, legal basis by collaboration model, and retention period. After that review, create a Cloudflare Turnstile widget restricted to the production and intended preview hostnames. Add `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` to Vercel, then set `NEXT_PUBLIC_PARTNER_APPLICATIONS_ENABLED=true` and `PARTNER_APPLICATIONS_ENABLED=true` for the same environment. Keep the secret server-only. Set the switches to `false` to close new submissions. The API verifies Turnstile server-side before invoking the database function.

@@ -38,7 +38,6 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
   const turnstileContainer = useRef<HTMLDivElement>(null);
   const turnstileWidget = useRef<string | null>(null);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
-  const prefix = kind === "merchant" ? "merchant-app" : "courier-app";
 
 
   useEffect(() => {
@@ -59,6 +58,10 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (process.env.NEXT_PUBLIC_PARTNER_APPLICATIONS_ENABLED !== "true") {
+      setMessage("Η δημόσια υποβολή αιτήσεων δεν έχει ανοίξει ακόμη.");
+      return;
+    }
     if (!siteKey) {
       setMessage("Η δημόσια φόρμα δεν έχει ενεργοποιηθεί ακόμη. Απαιτείται ρύθμιση Cloudflare Turnstile.");
       return;
@@ -71,6 +74,18 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
     setBusy(true);
     const formData = new FormData(event.currentTarget);
     const checkedValues = (name: string) => formData.getAll(name).map(String);
+    const selectedFulfilment = kind === "merchant" ? checkedValues("fulfillment_interests") : [];
+    const selectedVehicle = String(formData.get("vehicle_type") ?? "");
+    if (kind === "merchant" && selectedFulfilment.length === 0) {
+      setBusy(false);
+      setMessage("Επίλεξε τουλάχιστον έναν τρόπο παράδοσης.");
+      return;
+    }
+    if (kind === "courier" && ["motorcycle", "car"].includes(selectedVehicle) && formData.get("has_valid_driver_license") !== "on") {
+      setBusy(false);
+      setMessage("Για μηχανή ή αυτοκίνητο απαιτείται επιβεβαίωση ισχύουσας άδειας οδήγησης.");
+      return;
+    }
     const payload = {
       application_type: kind,
       first_name: String(formData.get("first_name") ?? "").trim(),
@@ -82,7 +97,7 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
       business_type: kind === "merchant" ? String(formData.get("business_type") ?? "") : null,
       address_line: kind === "merchant" ? String(formData.get("address_line") ?? "").trim() : null,
       postal_code: kind === "merchant" ? String(formData.get("postal_code") ?? "").trim() : null,
-      fulfillment_interests: kind === "merchant" ? checkedValues("fulfillment_interests") : [],
+      fulfillment_interests: selectedFulfilment,
       vehicle_type: kind === "courier" ? String(formData.get("vehicle_type") ?? "") : null,
       courier_network_preference: kind === "courier" ? String(formData.get("courier_network_preference") ?? "") : null,
       age_confirmed: kind === "courier" && formData.get("age_confirmed") === "on",
@@ -162,11 +177,11 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
       <label className="partner-privacy-check"><input type="checkbox" name="privacy_notice_acknowledged" required />Έχω διαβάσει την <a href="/privacy#partner-applications" target="_blank" rel="noreferrer">ενημέρωση απορρήτου</a> και γνωρίζω ότι τα στοιχεία μου θα χρησιμοποιηθούν για την εξέταση και επικοινωνία σχετικά με την αίτησή μου. *</label>
       <div className="partner-honeypot" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
       <div className="partner-turnstile-wrap">
-        {siteKey ? <div ref={turnstileContainer} /> : <p className="partner-turnstile-unavailable">Η ασφαλής υποβολή θα ενεργοποιηθεί μετά τη ρύθμιση του Cloudflare Turnstile.</p>}
+        {siteKey && process.env.NEXT_PUBLIC_PARTNER_APPLICATIONS_ENABLED === "true" ? <div ref={turnstileContainer} /> : <p className="partner-turnstile-unavailable">Η δημόσια υποβολή θα ενεργοποιηθεί όταν ολοκληρωθούν ο έλεγχος απορρήτου και η ρύθμιση ασφαλείας.</p>}
       </div>
       {message ? <p className="partner-form-error" role="alert">{message}</p> : null}
-      <button className="partner-form-submit" type="submit" disabled={busy || !siteKey || !turnstileToken}>{busy ? "Αποστολή αίτησης…" : "Υποβολή αίτησης ενδιαφέροντος"} <span>→</span></button>
+      <button className="partner-form-submit" type="submit" disabled={busy || !siteKey || !turnstileToken || process.env.NEXT_PUBLIC_PARTNER_APPLICATIONS_ENABLED !== "true"}>{busy ? "Αποστολή αίτησης…" : "Υποβολή αίτησης ενδιαφέροντος"} <span>→</span></button>
       <p className="partner-form-footnote">Τα στοιχεία είναι ορατά μόνο στην εξουσιοδοτημένη ομάδα λειτουργίας. Μην καταχωρίζεις αριθμούς ταυτότητας ή τραπεζικά στοιχεία σε αυτή την αρχική φόρμα.</p>
-    </form>
+    </form></>
   );
 }
