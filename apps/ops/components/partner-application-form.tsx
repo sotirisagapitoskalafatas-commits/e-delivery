@@ -148,7 +148,8 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
   }
 
   return (
-    <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" strategy="afterInteractive" onReady={() => setTurnstileReady(true)} />
+    <>
+      <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" strategy="afterInteractive" onReady={() => setTurnstileReady(true)} />
     <form className="partner-application-form" onSubmit={submit}>
       <div className="partner-form-head"><span className="partner-form-kicker">ΑΡΧΙΚΗ ΑΙΤΗΣΗ</span><h3>{kind === "merchant" ? "Στοιχεία επιχείρησης" : "Στοιχεία υποψηφίου διανομέα"}</h3><p>Τα πεδία με * είναι υποχρεωτικά.</p></div>
       <div className="partner-form-grid">
@@ -182,6 +183,7 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
       {message ? <p className="partner-form-error" role="alert">{message}</p> : null}
       <button className="partner-form-submit" type="submit" disabled={busy || !siteKey || !turnstileToken || process.env.NEXT_PUBLIC_PARTNER_APPLICATIONS_ENABLED !== "true"}>{busy ? "Αποστολή αίτησης…" : "Υποβολή αίτησης ενδιαφέροντος"} <span>→</span></button>
       <p className="partner-form-footnote">Τα στοιχεία είναι ορατά μόνο στην εξουσιοδοτημένη ομάδα λειτουργίας. Μην καταχωρίζεις αριθμούς ταυτότητας ή τραπεζικά στοιχεία σε αυτή την αρχική φόρμα.</p>
-    </form></>
+      </form>
+    </>
   );
 }
