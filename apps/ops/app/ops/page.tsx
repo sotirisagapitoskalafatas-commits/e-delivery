@@ -104,6 +104,7 @@ export default async function HomePage() {
       <a className="nav-item" href="#orders">Παραγγελίες</a>
       <a className="nav-item" href="#stores">Καταστήματα</a>
       <a className="nav-item" href="#couriers">Διανομείς</a>
+      {canDispatch ? <Link className="nav-item" href="/ops/applications">Αιτήσεις συνεργατών</Link> : null}
       <div className="sidebar-bottom"><span className="avatar">{(profile?.full_name ?? auth.user.email ?? "U").slice(0, 1).toUpperCase()}</span><div><strong>{profile?.full_name ?? "Χρήστης"}</strong><small>{role}</small></div></div>
     </aside>
     <section className="dashboard-main">

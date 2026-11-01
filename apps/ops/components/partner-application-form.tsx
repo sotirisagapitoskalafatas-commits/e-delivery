@@ -1,7 +1,17 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import Script from "next/script";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: { sitekey: string; callback: (token: string) => void; "expired-callback": () => void; "error-callback": () => void; theme: "light"; language: "el" }) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 type Kind = "merchant" | "courier";
 
@@ -23,53 +33,92 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState("");
+  const [turnstileReady, setTurnstileReady] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainer = useRef<HTMLDivElement>(null);
+  const turnstileWidget = useRef<string | null>(null);
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
   const prefix = kind === "merchant" ? "merchant-app" : "courier-app";
+
+
+  useEffect(() => {
+    if (!turnstileReady || !siteKey || !turnstileContainer.current || !window.turnstile || turnstileWidget.current) return;
+    turnstileWidget.current = window.turnstile.render(turnstileContainer.current, {
+      sitekey: siteKey,
+      callback: (token) => setTurnstileToken(token),
+      "expired-callback": () => setTurnstileToken(""),
+      "error-callback": () => setTurnstileToken(""),
+      theme: "light",
+      language: "el"
+    });
+    return () => {
+      if (turnstileWidget.current && window.turnstile) window.turnstile.remove(turnstileWidget.current);
+      turnstileWidget.current = null;
+    };
+  }, [turnstileReady, siteKey]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true);
-    setMessage("");
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) {
-      setBusy(false);
-      setMessage("Η φόρμα συνεργασιών δεν έχει συνδεθεί ακόμη με τη βάση δεδομένων. Δοκίμασε ξανά αργότερα.");
+    if (!siteKey) {
+      setMessage("Η δημόσια φόρμα δεν έχει ενεργοποιηθεί ακόμη. Απαιτείται ρύθμιση Cloudflare Turnstile.");
+      return;
+    }
+    if (!turnstileToken) {
+      setMessage("Ολοκλήρωσε πρώτα την επαλήθευση ασφαλείας.");
       return;
     }
 
+    setBusy(true);
     const formData = new FormData(event.currentTarget);
     const checkedValues = (name: string) => formData.getAll(name).map(String);
-    const { data, error } = await supabase.rpc("submit_partner_application", {
-      p_application_type: kind,
-      p_first_name: String(formData.get("first_name") ?? "").trim(),
-      p_last_name: String(formData.get("last_name") ?? "").trim(),
-      p_email: String(formData.get("email") ?? "").trim().toLowerCase(),
-      p_phone: String(formData.get("phone") ?? "").trim(),
-      p_city: String(formData.get("city") ?? "").trim(),
-      p_business_name: kind === "merchant" ? String(formData.get("business_name") ?? "").trim() : null,
-      p_business_type: kind === "merchant" ? String(formData.get("business_type") ?? "") : null,
-      p_address_line: kind === "merchant" ? String(formData.get("address_line") ?? "").trim() : null,
-      p_postal_code: kind === "merchant" ? String(formData.get("postal_code") ?? "").trim() : null,
-      p_fulfillment_interests: kind === "merchant" ? checkedValues("fulfillment_interests") : [],
-      p_vehicle_type: kind === "courier" ? String(formData.get("vehicle_type") ?? "") : null,
-      p_courier_network_preference: kind === "courier" ? String(formData.get("courier_network_preference") ?? "") : null,
-      p_age_confirmed: kind === "courier" && formData.get("age_confirmed") === "on",
-      p_has_valid_driver_license: kind === "courier" && formData.get("has_valid_driver_license") === "on",
-      p_has_smartphone: kind === "courier" && formData.get("has_smartphone") === "on",
-      p_privacy_notice_acknowledged: formData.get("privacy_notice_acknowledged") === "on",
-      p_website: String(formData.get("website") ?? "")
-    });
+    const payload = {
+      application_type: kind,
+      first_name: String(formData.get("first_name") ?? "").trim(),
+      last_name: String(formData.get("last_name") ?? "").trim(),
+      email: String(formData.get("email") ?? "").trim().toLowerCase(),
+      phone: String(formData.get("phone") ?? "").trim(),
+      city: String(formData.get("city") ?? "").trim(),
+      business_name: kind === "merchant" ? String(formData.get("business_name") ?? "").trim() : null,
+      business_type: kind === "merchant" ? String(formData.get("business_type") ?? "") : null,
+      address_line: kind === "merchant" ? String(formData.get("address_line") ?? "").trim() : null,
+      postal_code: kind === "merchant" ? String(formData.get("postal_code") ?? "").trim() : null,
+      fulfillment_interests: kind === "merchant" ? checkedValues("fulfillment_interests") : [],
+      vehicle_type: kind === "courier" ? String(formData.get("vehicle_type") ?? "") : null,
+      courier_network_preference: kind === "courier" ? String(formData.get("courier_network_preference") ?? "") : null,
+      age_confirmed: kind === "courier" && formData.get("age_confirmed") === "on",
+      has_valid_driver_license: kind === "courier" && formData.get("has_valid_driver_license") === "on",
+      has_smartphone: kind === "courier" && formData.get("has_smartphone") === "on",
+      privacy_notice_acknowledged: formData.get("privacy_notice_acknowledged") === "on",
+      website: String(formData.get("website") ?? ""),
+      turnstile_token: turnstileToken
+    };
 
-    setBusy(false);
-    if (error || !data) {
-      const errorText = error?.message ?? "";
-      setMessage(errorText.includes("application_already_exists")
-        ? "Υπάρχει ήδη ενεργή αίτηση με αυτό το email. Η ομάδα μας θα επικοινωνήσει μαζί σου."
-        : "Δεν ήταν δυνατή η καταχώριση. Έλεγξε τα υποχρεωτικά πεδία και δοκίμασε ξανά.");
-      return;
+    try {
+      const response = await fetch("/api/partner-applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json() as { success?: boolean; id?: string; error?: string };
+      setBusy(false);
+      if (!response.ok || !result.success || !result.id) {
+        setMessage(result.error === "application_already_exists"
+          ? "Υπάρχει ήδη ενεργή αίτηση με αυτό το email. Η ομάδα μας θα επικοινωνήσει μαζί σου."
+          : result.error === "turnstile_not_configured"
+            ? "Η ασφαλής υποβολή δεν έχει ενεργοποιηθεί ακόμη."
+            : "Δεν ήταν δυνατή η καταχώριση. Έλεγξε τα πεδία και δοκίμασε ξανά.");
+        if (turnstileWidget.current && window.turnstile) window.turnstile.reset(turnstileWidget.current);
+        setTurnstileToken("");
+        return;
+      }
+      setApplicationId(result.id);
+      setSubmitted(true);
+    } catch {
+      setBusy(false);
+      setMessage("Δεν ήταν δυνατή η επικοινωνία με τον server. Δοκίμασε ξανά.");
+      if (turnstileWidget.current && window.turnstile) window.turnstile.reset(turnstileWidget.current);
+      setTurnstileToken("");
     }
-
-    setApplicationId(String(data));
-    setSubmitted(true);
   }
 
   if (submitted) {
@@ -84,6 +133,7 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
   }
 
   return (
+    <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" strategy="afterInteractive" onReady={() => setTurnstileReady(true)} />
     <form className="partner-application-form" onSubmit={submit}>
       <div className="partner-form-head"><span className="partner-form-kicker">ΑΡΧΙΚΗ ΑΙΤΗΣΗ</span><h3>{kind === "merchant" ? "Στοιχεία επιχείρησης" : "Στοιχεία υποψηφίου διανομέα"}</h3><p>Τα πεδία με * είναι υποχρεωτικά.</p></div>
       <div className="partner-form-grid">
@@ -109,10 +159,13 @@ export function PartnerApplicationForm({ kind }: { kind: Kind }) {
           <p className="partner-form-help partner-field-full">Η τελική επιλεξιμότητα, τα απαιτούμενα έγγραφα, η ασφάλιση και οι όροι συνεργασίας ελέγχονται ξεχωριστά ανά όχημα και μοντέλο. Η φόρμα δεν αποτελεί έγκριση.</p>
         </>}
       </div>
-      <label className="partner-privacy-check"><input type="checkbox" name="privacy_notice_acknowledged" required />Έχω διαβάσει την <a href="/privacy" target="_blank" rel="noreferrer">ενημέρωση απορρήτου</a> και γνωρίζω ότι τα στοιχεία μου θα χρησιμοποιηθούν για την εξέταση και επικοινωνία σχετικά με την αίτησή μου. *</label>
+      <label className="partner-privacy-check"><input type="checkbox" name="privacy_notice_acknowledged" required />Έχω διαβάσει την <a href="/privacy#partner-applications" target="_blank" rel="noreferrer">ενημέρωση απορρήτου</a> και γνωρίζω ότι τα στοιχεία μου θα χρησιμοποιηθούν για την εξέταση και επικοινωνία σχετικά με την αίτησή μου. *</label>
       <div className="partner-honeypot" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
+      <div className="partner-turnstile-wrap">
+        {siteKey ? <div ref={turnstileContainer} /> : <p className="partner-turnstile-unavailable">Η ασφαλής υποβολή θα ενεργοποιηθεί μετά τη ρύθμιση του Cloudflare Turnstile.</p>}
+      </div>
       {message ? <p className="partner-form-error" role="alert">{message}</p> : null}
-      <button className="partner-form-submit" type="submit" disabled={busy}>{busy ? "Αποστολή αίτησης…" : "Υποβολή αίτησης ενδιαφέροντος"} <span>→</span></button>
+      <button className="partner-form-submit" type="submit" disabled={busy || !siteKey || !turnstileToken}>{busy ? "Αποστολή αίτησης…" : "Υποβολή αίτησης ενδιαφέροντος"} <span>→</span></button>
       <p className="partner-form-footnote">Τα στοιχεία είναι ορατά μόνο στην εξουσιοδοτημένη ομάδα λειτουργίας. Μην καταχωρίζεις αριθμούς ταυτότητας ή τραπεζικά στοιχεία σε αυτή την αρχική φόρμα.</p>
     </form>
   );

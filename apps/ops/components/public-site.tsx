@@ -18,7 +18,7 @@ export function SiteHeader() {
         </nav>
         <div className="market-header-actions">
           <ThemeToggle />
-          <Link className="market-partner-link" href="/merchant">Συνεργάσου μαζί μας</Link>
+          <Link className="market-partner-link" href="/partners">Συνεργάσου μαζί μας</Link>
           <span className="market-language" title="Γλώσσα: Ελληνικά">GR <span>⌄</span></span>
           <Link className="market-signin-link" href="/login">Σύνδεση</Link>
           <Link className="market-register-link" href="/register">Εγγραφή</Link>
