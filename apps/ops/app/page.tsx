@@ -95,7 +95,7 @@ export default async function HomePage() {
         <article className="panel" id="stores"><p className="eyebrow">MERCHANT NETWORK</p><h2>Καταστήματα</h2><p className="muted">Εγγραφή, επαλήθευση, καταστήματα και κάλυψη ανά περιοχή.</p><Link className="subtle-link" href="/catalog">Άνοιγμα καταλόγου</Link></article>
         <article className="panel" id="couriers"><p className="eyebrow">DELIVERY FLEET</p><h2>Διανομείς</h2><p className="muted">Οι αναθέσεις πραγματοποιούνται μόνο σε εγκεκριμένους διανομείς και καταγράφονται στο ιστορικό παραγγελίας.</p><span className="subtle-link">Dispatch, online status και ανεξάρτητα partner networks</span></article>
       </section>
-      <footer className="footer-note">Delivery Platform · Operational data only · Οι ώρες εμφανίζονται σε τοπική ώρα συσκευής.</footer>
+      <footer className="footer-note">E-DELIVERY · Operational data only · Η διαθεσιμότητα εμφανίζεται μόνο σε επιβεβαιωμένες ζώνες εξυπηρέτησης.</footer>
     </section>
   </main>;
 }
