@@ -3,8 +3,8 @@ import "./globals.css";
 import "./order-actions.css";
 
 export const metadata: Metadata = {
-  title: "Delivery Operations",
-  description: "Operations and merchant workspace for the Greek delivery platform."
+  title: "E-DELIVERY | Ό,τι χρειάζεσαι, κοντά σου",
+  description: "Ανακάλυψε φαγητό, supermarket και τοπικά καταστήματα με το E-DELIVERY."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
