@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { OrderActions } from "@/components/order-actions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type OrderRow = {
   id: string;
   status: string;
+  fulfillment_method: "platform" | "merchant";
   total_cents: number;
   currency: string;
   created_at: string;
@@ -46,12 +48,14 @@ export default async function HomePage() {
 
   const [{ data: profile }, { data: orders, error: ordersError }, { count: storeCount }] = await Promise.all([
     supabase.from("profiles").select("full_name,role").eq("id", auth.user.id).maybeSingle(),
-    supabase.from("orders").select("id,status,total_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(12),
+    supabase.from("orders").select("id,status,fulfillment_method,total_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(12),
     supabase.from("stores").select("id", { count: "exact", head: true })
   ]);
 
   const role = profile?.role ?? "customer";
-  const authorized = ["ops_admin", "merchant_admin", "merchant_staff", "support"].includes(role);
+  const authorized = ["ops_admin", "merchant_admin", "merchant_staff"].includes(role);
+  const canManage = ["ops_admin", "merchant_admin", "merchant_staff"].includes(role);
+  const canDispatch = role === "ops_admin";
   const rows = (orders ?? []) as unknown as OrderRow[];
   const today = new Date().toLocaleDateString("el-GR", { weekday: "long", day: "numeric", month: "long" });
 
@@ -85,7 +89,7 @@ export default async function HomePage() {
       </section>
       <section className="panel" id="orders">
         <div className="panel-heading"><div><p className="eyebrow">ORDER WORKFLOW</p><h2>Πρόσφατες παραγγελίες</h2></div><span className="live-dot">Συνδεδεμένα δεδομένα</span></div>
-        {ordersError ? <div className="notice error">Δεν ήταν δυνατή η ανάγνωση παραγγελιών. Έλεγξε migration, grants και RLS.</div> : rows.length === 0 ? <div className="empty-state"><div className="empty-icon">↗</div><h3>Δεν υπάρχουν ακόμη παραγγελίες</h3><p>Όταν ολοκληρωθεί η πρώτη πραγματική παραγγελία, θα εμφανιστεί εδώ.</p></div> : <div className="table-wrap"><table><thead><tr><th>Παραγγελία</th><th>Κατάστημα</th><th>Κατάσταση</th><th>Σύνολο</th><th>Ώρα</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td className="mono">#{row.id.slice(0, 8).toUpperCase()}</td><td>{row.store?.name ?? "—"}</td><td><span className="status-pill">{row.status.replaceAll("_", " ")}</span></td><td>{money(row.total_cents, row.currency)}</td><td>{new Date(row.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</td></tr>)}</tbody></table></div>}
+        {ordersError ? <div className="notice error">Δεν ήταν δυνατή η ανάγνωση παραγγελιών. Έλεγξε migration, grants και RLS.</div> : rows.length === 0 ? <div className="empty-state"><div className="empty-icon">↗</div><h3>Δεν υπάρχουν ακόμη παραγγελίες</h3><p>Όταν ολοκληρωθεί η πρώτη πραγματική παραγγελία, θα εμφανιστεί εδώ.</p></div> : <div className="table-wrap"><table><thead><tr><th>Παραγγελία</th><th>Κατάστημα</th><th>Κατάσταση</th><th>Fulfilment</th><th>Σύνολο</th><th>Ώρα</th><th>Ενέργειες</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td className="mono">#{row.id.slice(0, 8).toUpperCase()}</td><td>{row.store?.name ?? "—"}</td><td><span className="status-pill">{row.status.replaceAll("_", " ")}</span></td><td>{row.fulfillment_method === "platform" ? "Διανομέας πλατφόρμας" : "Διανομή καταστήματος"}</td><td>{money(row.total_cents, row.currency)}</td><td>{new Date(row.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</td><td><OrderActions orderId={row.id} status={row.status} fulfillmentMethod={row.fulfillment_method} canManage={canManage} canDispatch={canDispatch} /></td></tr>)}</tbody></table></div>}
       </section>
       <section className="lower-grid">
         <article className="panel" id="stores"><p className="eyebrow">MERCHANT NETWORK</p><h2>Καταστήματα</h2><p className="muted">Η ενεργοποίηση καταστημάτων γίνεται μετά από έλεγχο και επιβεβαίωση συνεργασίας.</p><span className="subtle-link">Η διαχείριση καταλόγου είναι επόμενο build increment.</span></article>
