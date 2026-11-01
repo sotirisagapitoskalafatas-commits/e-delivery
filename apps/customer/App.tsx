@@ -28,6 +28,7 @@ export default function App() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [placing, setPlacing] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const [checkoutKey, setCheckoutKey] = useState(() => `checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
 
   useEffect(() => {
     if (!supabase) { setReady(true); return; }
@@ -69,7 +70,12 @@ export default function App() {
 
   const subtotal = useMemo(() => products.reduce((total, product) => total + product.price_cents * (cart[product.id] ?? 0), 0), [products, cart]);
   const count = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
+  const cartSignature = JSON.stringify(Object.entries(cart).sort(([a], [b]) => a.localeCompare(b)));
   const selectedAddress = addresses.find((address) => address.id === addressId);
+
+  useEffect(() => {
+    if (store) setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
+  }, [store?.id, addressId, cartSignature]);
   const visibleStores = selectedAddress
     ? stores.filter((candidate) => candidate.service_postal_codes.includes(selectedAddress.postal_code))
     : stores;
@@ -122,7 +128,7 @@ export default function App() {
     }
     setPlacing(true);
     setError("");
-    const idempotencyKey = `customer-${session?.user.id}-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+    const idempotencyKey = checkoutKey;
     const { data, error: orderError } = await supabase.rpc("create_marketplace_order", {
       p_store_id: store.id,
       p_address_id: selectedAddress.id,
