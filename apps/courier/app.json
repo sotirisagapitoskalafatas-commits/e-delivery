@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Delivery Courier",
+    "slug": "delivery-courier",
+    "scheme": "delivery-courier",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": false, "bundleIdentifier": "gr.example.delivery.courier" },
+    "android": { "package": "gr.example.delivery.courier" }
+  }
+}
