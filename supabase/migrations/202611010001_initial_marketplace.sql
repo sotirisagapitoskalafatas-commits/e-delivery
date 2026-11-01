@@ -294,6 +294,24 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function private.handle_new_user();
 
+create or replace function private.validate_product_category()
+returns trigger language plpgsql security definer set search_path = ''
+as $
+begin
+  if new.category_id is not null and not exists (
+    select 1 from public.categories c
+    where c.id = new.category_id and c.store_id = new.store_id
+  ) then
+    raise exception 'category_must_belong_to_product_store';
+  end if;
+  return new;
+end;
+$;
+revoke all on function private.validate_product_category() from public, anon, authenticated;
+create trigger products_category_guard
+  before insert or update of category_id, store_id on public.products
+  for each row execute function private.validate_product_category();
+
 create or replace function private.touch_updated_at()
 returns trigger language plpgsql set search_path = ''
 as $$
@@ -387,6 +405,17 @@ create policy products_member_read on public.products
 for select to authenticated
 using (private.is_ops_admin() or private.is_merchant_member(store_id, array['owner','manager','staff']));
 
+create policy products_insert_managed_store on public.products
+for insert to authenticated
+with check (private.is_ops_admin() or private.is_merchant_member(store_id, array['owner','manager']));
+create policy products_update_managed_store on public.products
+for update to authenticated
+using (private.is_ops_admin() or private.is_merchant_member(store_id, array['owner','manager']))
+with check (private.is_ops_admin() or private.is_merchant_member(store_id, array['owner','manager']));
+create policy products_delete_managed_store on public.products
+for delete to authenticated
+using (private.is_ops_admin() or private.is_merchant_member(store_id, array['owner','manager']));
+
 create policy addresses_read_own on public.customer_addresses
 for select to authenticated using (customer_id = (select auth.uid()) or private.is_ops_admin());
 create policy addresses_insert_own on public.customer_addresses
@@ -431,6 +460,11 @@ revoke all on public.profiles, public.merchants, public.merchant_memberships, pu
   public.courier_assignments, public.payment_transactions from anon, authenticated;
 
 grant select on public.stores, public.categories, public.products to anon, authenticated;
+grant insert (store_id, category_id, name, description, price_cents, currency, tax_rate, allergens, image_path, is_available)
+  on public.products to authenticated;
+grant update (category_id, name, description, price_cents, tax_rate, allergens, image_path, is_available)
+  on public.products to authenticated;
+grant delete on public.products to authenticated;
 grant select (id, full_name, phone, role) on public.profiles to authenticated;
 grant select on public.merchants, public.merchant_memberships,
   public.customer_addresses, public.orders, public.order_items, public.order_events,
