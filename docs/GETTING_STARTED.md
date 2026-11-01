@@ -18,7 +18,7 @@ cp apps/courier/.env.example apps/courier/.env
 Fill in the Supabase URL and publishable key in each app's environment file. The web workspace reads `apps/ops/.env.local`; Expo reads each mobile app's `.env` when started from that workspace. Publishable keys are designed for client use; secret/service-role keys are not.
 
 ## Database
-Create a new Supabase project for this product. Do not point the migration at another live CRM or unrelated project. Review `supabase/migrations/202611010001_initial_marketplace.sql`, `202611010002_add_independent_fulfilment.sql` and `202611010003_multi_network_and_non_basket_jobs.sql`, then apply it using the Supabase CLI or SQL editor. Run the Supabase security and performance advisors afterwards. Test policies with separate customer, merchant, courier and operations accounts.
+Create a new Supabase project for this product. Do not point the migration at another live CRM or unrelated project. Review `supabase/migrations/202611010001_initial_marketplace.sql`, `202611010002_add_independent_fulfilment.sql` and `202611010003_multi_network_and_non_basket_jobs.sql` and `202611010004_express_customer_request.sql`, then apply it using the Supabase CLI or SQL editor. Run the Supabase security and performance advisors afterwards. Test policies with separate customer, merchant, courier and operations accounts.
 
 ## Run
 ```bash
