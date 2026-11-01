@@ -13,7 +13,7 @@ export default async function CatalogPage() {
   if (!supabase) return <main className="setup-shell"><section className="setup-card"><h1>Απαιτείται ρύθμιση Supabase</h1><p className="muted">Συμπλήρωσε τα environment variables της εφαρμογής ops.</p></section></main>;
 
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect("/login");
+  if (!auth.user) redirect("/merchant/login");
 
   const [{ data: profile }, { data: storeRows, error }] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", auth.user.id).maybeSingle(),
@@ -28,8 +28,8 @@ export default async function CatalogPage() {
   const stores = (storeRows ?? []) as StoreRow[];
   return <main className="catalog-page">
     <header className="catalog-page-header">
-      <div><Link className="brand-mark" href="/">e-delivery<span> / OPS</span></Link><p className="eyebrow">MERCHANT WORKSPACE</p><h1>Διαχείριση καταλόγου</h1><p className="muted">Πρόσθεσε και ενημέρωσε τα προϊόντα των καταστημάτων που διαχειρίζεσαι.</p></div>
-      <Link className="secondary-button" href="/">Πίσω στις παραγγελίες</Link>
+      <div><Link className="brand-mark" href="/merchant">e-delivery<span> / MERCHANT</span></Link><p className="eyebrow">MERCHANT WORKSPACE</p><h1>Διαχείριση καταλόγου</h1><p className="muted">Πρόσθεσε και ενημέρωσε τα προϊόντα των καταστημάτων που διαχειρίζεσαι.</p></div>
+      <Link className="secondary-button" href="/ops">Πίσω στις παραγγελίες</Link>
     </header>
     {error ? <p className="catalog-message">Δεν ήταν δυνατή η φόρτωση καταστημάτων. Έλεγξε RLS και membership.</p> : null}
     <CatalogManager stores={stores} canManage={role === "ops_admin" || role === "merchant_admin"} />

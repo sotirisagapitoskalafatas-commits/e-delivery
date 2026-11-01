@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-export function SignInForm() {
+export function SignInForm({ redirectTo = "/ops" }: { redirectTo?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,7 +26,7 @@ export function SignInForm() {
       setMessage("Η σύνδεση απέτυχε. Έλεγξε τα στοιχεία σου ή επικοινώνησε με τον διαχειριστή.");
       return;
     }
-    router.replace("/");
+    router.replace(redirectTo);
     router.refresh();
   }
 
