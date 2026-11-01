@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 type Props = {
   orderId: string;
   status: string;
-  fulfillmentMethod: "platform" | "merchant";
+  fulfillmentMethod: "platform" | "merchant" | "independent";
   canManage: boolean;
   canDispatch: boolean;
 };
@@ -45,6 +45,7 @@ export function OrderActions({ orderId, status, fulfillmentMethod, canManage, ca
     const { data, error } = await supabase.from("courier_profiles")
       .select("user_id,vehicle_type")
       .eq("status", "approved")
+      .eq("network_type", fulfillmentMethod === "platform" ? "platform" : "independent_partner")
       .order("created_at", { ascending: true });
     setBusy(false);
     if (error) { setMessage("Δεν ήταν δυνατή η φόρτωση εγκεκριμένων διανομέων."); return; }
@@ -52,7 +53,7 @@ export function OrderActions({ orderId, status, fulfillmentMethod, canManage, ca
     setCouriers(rows);
     setCourierId(rows[0]?.user_id ?? "");
     setChoosingCourier(true);
-    if (rows.length === 0) setMessage("Δεν υπάρχουν εγκεκριμένοι διανομείς.");
+    if (rows.length === 0) setMessage(fulfillmentMethod === "platform" ? "Δεν υπάρχουν εγκεκριμένοι διανομείς της πλατφόρμας." : "Δεν υπάρχουν εγκεκριμένοι διανομείς συνεργατών.");
   }
 
   async function dispatch() {

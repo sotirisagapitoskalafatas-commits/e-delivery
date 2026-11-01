@@ -83,3 +83,42 @@ where id = 'VERIFIED_STORE_UUID';
 ```
 
 RLS controls access to the catalogue and the checkout RPC checks that the customer's saved postcode is in the store service list.
+
+
+## Register an independent delivery partner and affiliate couriers
+
+Only after the partner's legal entity, commercial agreement, insurance/safety process and operational coverage have been verified:
+
+```sql
+-- First ensure the verified partner contact has an account.
+update public.profiles
+set role = 'courier'
+where id = (select id from auth.users where email = 'verified-partner-courier@example.gr');
+
+with partner as (
+  insert into public.independent_partners (legal_name, display_name, status)
+  values ('VERIFIED PARTNER LEGAL NAME', 'VERIFIED PARTNER BRAND', 'pending')
+  returning id
+),
+membership as (
+  insert into public.independent_partner_memberships (partner_id, user_id, role)
+  select partner.id, p.id, 'owner'
+  from partner
+  join public.profiles p on p.id = (
+    select id from auth.users where email = 'verified-partner-owner@example.gr'
+  )
+  returning partner_id
+)
+insert into public.courier_profiles (
+  user_id, status, vehicle_type, network_type, independent_partner_id
+)
+select p.id, 'pending', 'bicycle', 'independent_partner', partner.id
+from partner
+join public.profiles p on p.id = (
+  select id from auth.users where email = 'verified-partner-courier@example.gr'
+);
+```
+
+The owner and courier can be different users. Add one membership per verified partner operator and one courier profile per verified courier. Set partner status to `active` and courier status to `approved` only after all required checks and agreements are complete. The technical network type does not decide the courier's legal worker classification.
+
+A store may enable `independent_delivery_enabled` only after its commercial arrangement and the partner's service coverage are verified. The checkout RPC rejects an independent delivery selection when the store has not enabled it.

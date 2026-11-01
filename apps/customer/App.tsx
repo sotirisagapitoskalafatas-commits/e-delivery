@@ -3,7 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaV
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./src/supabase";
 
-type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; service_postal_codes: string[] };
+type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[] };
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[] };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
@@ -31,7 +31,7 @@ export default function App() {
   const [confirmation, setConfirmation] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [screen, setScreen] = useState<"stores" | "orders">("stores");
-  const [fulfillmentMethod, setFulfillmentMethod] = useState<"platform" | "merchant">("platform");
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<"platform" | "merchant" | "independent">("platform");
   const [checkoutKey, setCheckoutKey] = useState(() => `checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function App() {
     if (!session || !supabase) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(60),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(60),
       supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
       supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30)
     ]).then(([storeResult, addressResult, orderResult]) => {
@@ -98,7 +98,7 @@ export default function App() {
 
   useEffect(() => {
     if (store) setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
-  }, [store?.id, addressId, cartSignature]);
+  }, [store?.id, addressId, cartSignature, fulfillmentMethod]);
   const visibleStores = selectedAddress
     ? stores.filter((candidate) => candidate.service_postal_codes.includes(selectedAddress.postal_code))
     : stores;
@@ -208,6 +208,7 @@ export default function App() {
         <Text style={styles.sectionTitle}>Τρόπος παράδοσης</Text>
         {store.platform_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "platform" && styles.addressSelected]} onPress={() => setFulfillmentMethod("platform")}><Text style={styles.productName}>Διανομέας πλατφόρμας</Text><Text style={styles.mutedSmall}>Παράδοση από το δίκτυο διανομέων της πλατφόρμας</Text></Pressable> : null}
         {store.merchant_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "merchant" && styles.addressSelected]} onPress={() => setFulfillmentMethod("merchant")}><Text style={styles.productName}>Διανομή καταστήματος</Text><Text style={styles.mutedSmall}>Παράδοση από τον συνεργαζόμενο έμπορο</Text></Pressable> : null}
+        {store.independent_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "independent" && styles.addressSelected]} onPress={() => setFulfillmentMethod("independent")}><Text style={styles.productName}>Ανεξάρτητος συνεργάτης delivery</Text><Text style={styles.mutedSmall}>Παράδοση από εγκεκριμένο συνεργαζόμενο δίκτυο</Text></Pressable> : null}
         <Text style={styles.sectionTitle}>Μενού</Text>
         {products.map((product) => <View key={product.id} style={styles.product}><View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.mutedSmall}>{product.description ?? ""}</Text><Text style={styles.price}>{euro(product.price_cents)}</Text>{product.allergens.length ? <Text style={styles.mutedSmall}>Αλλεργιογόνα: {product.allergens.join(", ")}</Text> : null}</View><Pressable style={styles.addButton} onPress={() => setCart((current) => ({ ...current, [product.id]: (current[product.id] ?? 0) + 1 }))}><Text style={styles.addText}>+ Προσθήκη</Text></Pressable></View>)}
         <Text style={styles.sectionTitle}>Διεύθυνση παράδοσης</Text>
@@ -229,7 +230,7 @@ export default function App() {
         <View style={styles.hero}><Text style={styles.eyebrow}>ATHENS · LOCAL DELIVERY</Text><Text style={styles.heroTitle}>Κάτι καλό,{"\n"}λίγα λεπτά μακριά.</Text><Text style={styles.muted}>Ανακάλυψε τα καταστήματα που εξυπηρετούν την περιοχή σου.</Text></View>
         <Text style={styles.sectionTitle}>Καταστήματα κοντά σου</Text>
         {!selectedAddress ? <Text style={styles.mutedSmall}>Πρόσθεσε διεύθυνση για να δεις ποια καταστήματα εξυπηρετούν την περιοχή σου.</Text> : null}
-        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν υπάρχουν διαθέσιμα καταστήματα για αυτή τη διεύθυνση</Text><Text style={styles.mutedSmall}>Τα καταστήματα εμφανίζονται όταν ενεργοποιηθούν και ρυθμιστεί η περιοχή εξυπηρέτησής τους.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : "merchant"); setScreen("stores"); }}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>{item.store_type === "restaurant" ? "🍽" : item.store_type === "bakery" ? "🥐" : "🛍"}</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
+        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν υπάρχουν διαθέσιμα καταστήματα για αυτή τη διεύθυνση</Text><Text style={styles.mutedSmall}>Τα καταστήματα εμφανίζονται όταν ενεργοποιηθούν και ρυθμιστεί η περιοχή εξυπηρέτησής τους.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>{item.store_type === "restaurant" ? "🍽" : item.store_type === "bakery" ? "🥐" : "🛍"}</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
         {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
         <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />

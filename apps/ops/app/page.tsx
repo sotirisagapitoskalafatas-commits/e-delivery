@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 type OrderRow = {
   id: string;
   status: string;
-  fulfillment_method: "platform" | "merchant";
+  fulfillment_method: "platform" | "merchant" | "independent";
   total_cents: number;
   currency: string;
   created_at: string;
@@ -89,7 +89,7 @@ export default async function HomePage() {
       </section>
       <section className="panel" id="orders">
         <div className="panel-heading"><div><p className="eyebrow">ORDER WORKFLOW</p><h2>Πρόσφατες παραγγελίες</h2></div><span className="live-dot">Συνδεδεμένα δεδομένα</span></div>
-        {ordersError ? <div className="notice error">Δεν ήταν δυνατή η ανάγνωση παραγγελιών. Έλεγξε migration, grants και RLS.</div> : rows.length === 0 ? <div className="empty-state"><div className="empty-icon">↗</div><h3>Δεν υπάρχουν ακόμη παραγγελίες</h3><p>Όταν ολοκληρωθεί η πρώτη πραγματική παραγγελία, θα εμφανιστεί εδώ.</p></div> : <div className="table-wrap"><table><thead><tr><th>Παραγγελία</th><th>Κατάστημα</th><th>Κατάσταση</th><th>Fulfilment</th><th>Σύνολο</th><th>Ώρα</th><th>Ενέργειες</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td className="mono">#{row.id.slice(0, 8).toUpperCase()}</td><td>{row.store?.name ?? "—"}</td><td><span className="status-pill">{row.status.replaceAll("_", " ")}</span></td><td>{row.fulfillment_method === "platform" ? "Διανομέας πλατφόρμας" : "Διανομή καταστήματος"}</td><td>{money(row.total_cents, row.currency)}</td><td>{new Date(row.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</td><td><OrderActions orderId={row.id} status={row.status} fulfillmentMethod={row.fulfillment_method} canManage={canManage} canDispatch={canDispatch} /></td></tr>)}</tbody></table></div>}
+        {ordersError ? <div className="notice error">Δεν ήταν δυνατή η ανάγνωση παραγγελιών. Έλεγξε migration, grants και RLS.</div> : rows.length === 0 ? <div className="empty-state"><div className="empty-icon">↗</div><h3>Δεν υπάρχουν ακόμη παραγγελίες</h3><p>Όταν ολοκληρωθεί η πρώτη πραγματική παραγγελία, θα εμφανιστεί εδώ.</p></div> : <div className="table-wrap"><table><thead><tr><th>Παραγγελία</th><th>Κατάστημα</th><th>Κατάσταση</th><th>Fulfilment</th><th>Σύνολο</th><th>Ώρα</th><th>Ενέργειες</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td className="mono">#{row.id.slice(0, 8).toUpperCase()}</td><td>{row.store?.name ?? "—"}</td><td><span className="status-pill">{row.status.replaceAll("_", " ")}</span></td><td>{row.fulfillment_method === "platform" ? "Διανομέας πλατφόρμας" : row.fulfillment_method === "independent" ? "Ανεξάρτητος συνεργάτης" : "Διανομή καταστήματος"}</td><td>{money(row.total_cents, row.currency)}</td><td>{new Date(row.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</td><td><OrderActions orderId={row.id} status={row.status} fulfillmentMethod={row.fulfillment_method} canManage={canManage} canDispatch={canDispatch} /></td></tr>)}</tbody></table></div>}
       </section>
       <section className="lower-grid">
         <article className="panel" id="stores"><p className="eyebrow">MERCHANT NETWORK</p><h2>Καταστήματα</h2><p className="muted">Εγγραφή, επαλήθευση, καταστήματα και κάλυψη ανά περιοχή.</p><span className="subtle-link">Διαχείριση καταλόγου</span></article>
