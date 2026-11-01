@@ -9,6 +9,7 @@ type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | n
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[]; image_path: string | null };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
+type MenuCategoryRow = { id: string; store_id: string; name: string };
 type StoreCategory = "all" | "food" | "groceries" | "shops";
 type HomeScreen = "stores" | "orders" | "services" | "express";
 
@@ -66,6 +67,8 @@ export default function App() {
   const [storeTypeFilter, setStoreTypeFilter] = useState("");
   const [storeSort, setStoreSort] = useState<"recommended" | "delivery" | "preparation" | "minimum">("recommended");
   const [freeDeliveryOnly, setFreeDeliveryOnly] = useState(false);
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("");
+  const [menuCategories, setMenuCategories] = useState<MenuCategoryRow[]>([]);
   const [serviceTitle, setServiceTitle] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
   const [serviceSubmitting, setServiceSubmitting] = useState(false);
@@ -106,13 +109,15 @@ export default function App() {
     let active = true;
     Promise.all([
       supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60)
-    ]).then(([storeResult, serviceResult]) => {
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
+      supabase.from("categories").select("id,store_id,name").eq("is_active", true).order("sort_order").limit(1000)
+    ]).then(([storeResult, serviceResult, categoryResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
       else setStores((storeResult.data ?? []) as Store[]);
       if (serviceResult.error) setError("Δεν ήταν δυνατή η φόρτωση υπηρεσιών της περιοχής.");
       else setServiceProviders((serviceResult.data ?? []) as Store[]);
+      if (!categoryResult.error) setMenuCategories((categoryResult.data ?? []) as MenuCategoryRow[]);
     });
     return () => { active = false; };
   }, []);
@@ -216,7 +221,8 @@ export default function App() {
     const matchesType = !storeTypeFilter || candidate.store_type === storeTypeFilter;
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
     const matchesFreeDelivery = !freeDeliveryOnly || candidate.base_delivery_fee_cents === 0;
-    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery;
+    const matchesMenuCategory = !menuCategoryFilter || menuCategories.some((item) => item.store_id === candidate.id && item.name.localeCompare(menuCategoryFilter, "el", { sensitivity: "base" }) === 0);
+    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery && matchesMenuCategory;
   });
   const sortedStores = [...visibleStores].sort((a, b) => {
     if (storeSort === "delivery") return a.base_delivery_fee_cents - b.base_delivery_fee_cents || a.name.localeCompare(b.name, "el");
@@ -227,6 +233,13 @@ export default function App() {
   const availableTypeFilters = storeTypesByCategory[category].filter((type) =>
     stores.some((store) => store.store_type === type && (!activePostalCode || store.service_postal_codes.includes(activePostalCode)))
   );
+  const storesInCurrentArea = new Set(stores.filter((store) =>
+    storeTypesByCategory[category].includes(store.store_type) &&
+    (!activePostalCode || store.service_postal_codes.includes(activePostalCode))
+  ).map((store) => store.id));
+  const menuCategoryOptions = Array.from(new Set(
+    menuCategories.filter((item) => storesInCurrentArea.has(item.store_id)).map((item) => item.name.trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, "el"));
   const visibleServices = serviceProviders.filter((candidate) => {
     const inCoverage = !activePostalCode || candidate.service_postal_codes.includes(activePostalCode);
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
@@ -560,7 +573,7 @@ export default function App() {
             { id: "food" as const, label: "Φαγητό & καφές", image: categoryPhotos.restaurant },
             { id: "groceries" as const, label: "Supermarket", image: categoryPhotos.supermarket },
             { id: "shops" as const, label: "Καταστήματα", image: categoryPhotos.retail }
-          ]).map((item) => <Pressable key={item.id} style={[styles.marketPhotoTab, category === item.id && styles.marketPhotoTabActive]} onPress={() => { setCategory(item.id); setStoreTypeFilter(""); }}>
+          ]).map((item) => <Pressable key={item.id} style={[styles.marketPhotoTab, category === item.id && styles.marketPhotoTabActive]} onPress={() => { setCategory(item.id); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}>
             <Image source={{ uri: item.image }} style={styles.marketPhotoTabImage} />
             <View style={styles.marketPhotoTabShade} />
             <Text style={styles.marketPhotoTabLabel}>{item.label}</Text>
@@ -568,10 +581,10 @@ export default function App() {
         </ScrollView>
 
         <View style={styles.categoryRow}>
-          <Pressable style={[styles.categoryChip, category === "all" && styles.categoryChipSelected]} onPress={() => { setCategory("all"); setStoreTypeFilter(""); }}><Text style={category === "all" ? styles.categoryTextSelected : styles.categoryText}>Όλα</Text></Pressable>
-          <Pressable style={[styles.categoryChip, category === "food" && styles.categoryChipSelected]} onPress={() => { setCategory("food"); setStoreTypeFilter(""); }}><Text style={category === "food" ? styles.categoryTextSelected : styles.categoryText}>Φαγητό</Text></Pressable>
-          <Pressable style={[styles.categoryChip, category === "groceries" && styles.categoryChipSelected]} onPress={() => { setCategory("groceries"); setStoreTypeFilter(""); }}><Text style={category === "groceries" ? styles.categoryTextSelected : styles.categoryText}>Supermarket</Text></Pressable>
-          <Pressable style={[styles.categoryChip, category === "shops" && styles.categoryChipSelected]} onPress={() => { setCategory("shops"); setStoreTypeFilter(""); }}><Text style={category === "shops" ? styles.categoryTextSelected : styles.categoryText}>Καταστήματα</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "all" && styles.categoryChipSelected]} onPress={() => { setCategory("all"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "all" ? styles.categoryTextSelected : styles.categoryText}>Όλα</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "food" && styles.categoryChipSelected]} onPress={() => { setCategory("food"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "food" ? styles.categoryTextSelected : styles.categoryText}>Φαγητό</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "groceries" && styles.categoryChipSelected]} onPress={() => { setCategory("groceries"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "groceries" ? styles.categoryTextSelected : styles.categoryText}>Supermarket</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "shops" && styles.categoryChipSelected]} onPress={() => { setCategory("shops"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "shops" ? styles.categoryTextSelected : styles.categoryText}>Καταστήματα</Text></Pressable>
         </View>
 
         <Text style={styles.sectionTitle}>Κατηγορίες</Text>
@@ -584,6 +597,24 @@ export default function App() {
             </Pressable>;
           })}
         </ScrollView>
+
+        {menuCategoryOptions.length > 0 ? <>
+          <Text style={styles.sectionTitle}>Κουζίνες & κατηγορίες καταλόγου</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeFiltersRow}>
+            <Pressable style={[styles.typeFilterChip, !menuCategoryFilter && styles.typeFilterChipActive]} onPress={() => setMenuCategoryFilter("")}>
+              <Text style={!menuCategoryFilter ? styles.typeFilterTextActive : styles.typeFilterText}>Όλες</Text>
+            </Pressable>
+            {menuCategoryOptions.map((name) => {
+              const count = new Set(menuCategories.filter((item) =>
+                item.name.localeCompare(name, "el", { sensitivity: "base" }) === 0 && storesInCurrentArea.has(item.store_id)
+              ).map((item) => item.store_id)).size;
+              return <Pressable key={name} style={[styles.typeFilterChip, menuCategoryFilter === name && styles.typeFilterChipActive]} onPress={() => setMenuCategoryFilter((current) => current === name ? "" : name)}>
+                <Text style={menuCategoryFilter === name ? styles.typeFilterTextActive : styles.typeFilterText}>{name}</Text>
+                <Text style={menuCategoryFilter === name ? styles.typeFilterCountActive : styles.typeFilterCount}>{count}</Text>
+              </Pressable>;
+            })}
+          </ScrollView>
+        </> : null}
 
         <View style={styles.discoveryHeading}>
           <View style={{ flex: 1 }}>
