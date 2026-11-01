@@ -15,6 +15,7 @@ export function SiteHeader() {
           <Link href="/explore?category=food">Φαγητό</Link>
           <Link href="/explore?category=groceries">Supermarket</Link>
           <Link href="/explore?category=shops">Καταστήματα</Link>
+          <Link href="/#how-it-works">Πώς λειτουργεί</Link>
         </nav>
         <div className="market-header-actions">
           <ThemeToggle />
@@ -37,7 +38,7 @@ export function SiteFooter() {
           <p>Ό,τι χρειάζεσαι. Παραδίδεται.</p>
           <small>Μία πλατφόρμα για τοπικές επιχειρήσεις και καθημερινές ανάγκες.</small>
         </div>
-        <div className="market-footer-links"><strong>Ανακάλυψε</strong><Link href="/explore">Όλα τα καταστήματα</Link><Link href="/explore?category=food">Φαγητό</Link><Link href="/explore?category=groceries">Supermarket</Link><Link href="/explore?category=shops">Καταστήματα</Link></div>
+        <div className="market-footer-links"><strong>Ανακάλυψε</strong><Link href="/explore">Όλα τα καταστήματα</Link><Link href="/explore?category=food">Φαγητό</Link><Link href="/explore?category=groceries">Supermarket</Link><Link href="/explore?category=shops">Καταστήματα</Link><Link href="/#how-it-works">Πώς λειτουργεί</Link><Link href="/#faq">Συχνές ερωτήσεις</Link></div>
         <div className="market-footer-links"><strong>Ο λογαριασμός μου</strong><Link href="/login">Σύνδεση πελάτη</Link><Link href="/register">Δημιουργία λογαριασμού</Link><Link href="/account">Οι παραγγελίες μου</Link></div>
         <div className="market-footer-links"><strong>Συνεργάτες</strong><Link href="/merchant">Έχεις κατάστημα;</Link><Link href="/courier">Γίνε διανομέας</Link><Link href="/ops/login">Είσοδος OPS</Link></div>
       </div>
