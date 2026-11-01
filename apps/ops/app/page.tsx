@@ -1,67 +1,211 @@
 import Link from "next/link";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SiteFooter, SiteHeader } from "@/components/public-site";
 
-const categories = [
-  { title: "Φαγητό", sub: "Εστιατόρια, καφέ και φούρνοι", icon: "🍔", href: "/explore?category=food", tone: "red" },
-  { title: "Supermarket", sub: "Τα καθημερινά σου, εύκολα", icon: "🛒", href: "/explore?category=groceries", tone: "yellow" },
-  { title: "Καταστήματα", sub: "Αγορές από την περιοχή σου", icon: "🛍️", href: "/explore?category=shops", tone: "cream" },
-  { title: "Express", sub: "Τοπικές αποστολές", icon: "🛵", href: null, tone: "dark", soon: true },
-  { title: "Υπηρεσίες", sub: "Τοπικοί επαγγελματίες", icon: "🧰", href: null, tone: "cream", soon: true }
+type StoreRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  store_type: string;
+  city: string;
+  region: string;
+  minimum_order_cents: number;
+  base_delivery_fee_cents: number;
+  prep_time_minutes: number;
+  created_at: string;
+};
+
+const storeKinds: Record<string, { label: string; icon: string; tone: string }> = {
+  restaurant: { label: "Εστιατόριο", icon: "🍽️", tone: "food" },
+  cafe: { label: "Καφέ", icon: "☕", tone: "coffee" },
+  bakery: { label: "Αρτοποιείο", icon: "🥐", tone: "bakery" },
+  supermarket: { label: "Supermarket", icon: "🛒", tone: "market" },
+  convenience: { label: "Mini market", icon: "🥛", tone: "market" },
+  retail: { label: "Κατάστημα", icon: "🛍️", tone: "retail" },
+  pharmacy: { label: "Φαρμακείο", icon: "💊", tone: "retail" },
+  flower_shop: { label: "Ανθοπωλείο", icon: "💐", tone: "retail" },
+  pet_shop: { label: "Pet shop", icon: "🐾", tone: "retail" },
+  parcel_point: { label: "Σημείο αποστολών", icon: "📦", tone: "retail" },
+  service_provider: { label: "Τοπική υπηρεσία", icon: "🧰", tone: "retail" },
+  other: { label: "Τοπική επιχείρηση", icon: "🏪", tone: "retail" }
+};
+
+const euro = (cents: number) =>
+  new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
+
+function StoreCard({ store, isNew = false }: { store: StoreRow; isNew?: boolean }) {
+  const kind = storeKinds[store.store_type] ?? storeKinds.other;
+  return (
+    <Link href={`/store/${store.id}`} className="market-store-card">
+      <div className={`market-store-art ${kind.tone}`}>
+        <span className="market-store-icon">{kind.icon}</span>
+        {isNew ? <span className="market-new-badge">Νέο</span> : null}
+        <span className="market-store-kind">{kind.label}</span>
+      </div>
+      <div className="market-store-body">
+        <div className="market-store-heading">
+          <h3>{store.name}</h3>
+          <span className="market-store-arrow" aria-hidden="true">↗</span>
+        </div>
+        <p className="market-store-location">{store.city}{store.region ? `, ${store.region}` : ""}</p>
+        {store.description ? <p className="market-store-description">{store.description}</p> : null}
+        <div className="market-store-meta">
+          <span>◷ Προετοιμασία ~{store.prep_time_minutes}′</span>
+          <span>Ελάχιστη {euro(store.minimum_order_cents)}</span>
+        </div>
+        <div className="market-store-delivery">Παράδοση {euro(store.base_delivery_fee_cents)}</div>
+      </div>
+    </Link>
+  );
+}
+
+const categoryLinks = [
+  { label: "Εστιατόρια", detail: "Γεύματα και αγαπημένες γεύσεις", icon: "🍽️", type: "restaurant", tone: "red" },
+  { label: "Καφέδες", detail: "Ο καφές της ημέρας", icon: "☕", type: "cafe", tone: "yellow" },
+  { label: "Αρτοποιήματα", detail: "Φρέσκα από τον φούρνο", icon: "🥐", type: "bakery", tone: "cream" },
+  { label: "Supermarket", detail: "Όσα χρειάζεσαι στο σπίτι", icon: "🛒", type: "supermarket", tone: "yellow" },
+  { label: "Mini market", detail: "Μικρές καθημερινές αγορές", icon: "🥛", type: "convenience", tone: "cream" },
+  { label: "Καταστήματα", detail: "Ανακάλυψε την αγορά σου", icon: "🛍️", type: "retail", tone: "dark" },
+  { label: "Φαρμακεία", detail: "Τοπικά φαρμακεία", icon: "💊", type: "pharmacy", tone: "cream" },
+  { label: "Ανθοπωλεία", detail: "Λουλούδια και δώρα", icon: "💐", type: "flower_shop", tone: "yellow" },
+  { label: "Pet shops", detail: "Για τους μικρούς σου φίλους", icon: "🐾", type: "pet_shop", tone: "cream" }
 ];
 
-export default function HomePage() {
-  return <main className="public-page">
-    <SiteHeader />
-    <section className="customer-hero">
-      <div className="hero-copy">
-        <div className="hero-kicker"><span className="kicker-dot" /> Η ΤΟΠΙΚΗ ΣΟΥ ΑΓΟΡΑ, ΣΕ ΜΙΑ ΕΦΑΡΜΟΓΗ</div>
-        <h1>Ό,τι χρειάζεσαι.<br/><span>Στο δρόμο για σένα.</span></h1>
-        <p>Ανακάλυψε φαγητό, supermarket και αγαπημένα τοπικά καταστήματα. Δες τι εξυπηρετεί τη διεύθυνσή σου και παράγγειλε εύκολα.</p>
-        <form className="hero-search" action="/explore" method="get">
-          <span className="hero-search-pin">⌖</span>
-          <input name="q" placeholder="Τι ψάχνεις σήμερα;" aria-label="Αναζήτηση καταστήματος" />
-          <input name="postal_code" inputMode="numeric" maxLength={5} placeholder="Ταχυδρομικός κώδικας" aria-label="Ταχυδρομικός κώδικας" />
-          <button type="submit">Ανακάλυψε <span>→</span></button>
-        </form>
-        <div className="hero-trust"><span><i>✓</i> Διαφανής χρέωση πριν την παραγγελία</span><span><i>✓</i> Επιλογές παράδοσης όπου διατίθενται</span></div>
-      </div>
-      <div className="hero-art" aria-label="Προεπισκόπηση εφαρμογής E-DELIVERY">
-        <div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-yellow-disc"/><div className="art-red-disc"/>
-        <div className="phone-preview"><div className="phone-speaker"/>
-          <div className="phone-top"><b>e-delivery</b><span>⌖ Αθήνα</span></div>
-          <div className="phone-greeting">Καλημέρα 👋<br/><strong>Τι θα ήθελες σήμερα;</strong></div>
-          <div className="phone-search">⌕ Αναζήτηση καταστημάτων</div>
-          <div className="phone-categories"><span>🍔<small>Φαγητό</small></span><span>🛒<small>Market</small></span><span>🛍️<small>Shops</small></span></div>
-          <div className="phone-promo"><span>ΚΑΤΙ ΚΑΛΟ,</span><b>ΚΟΝΤΑ ΣΟΥ.</b><small>Ανακάλυψε την περιοχή σου</small></div>
-          <div className="phone-listing"><i>🍕</i><span><b>Τοπικές επιλογές</b><small>Καταστήματα στην περιοχή σου</small></span><em>›</em></div>
-          <div className="phone-listing"><i>🥐</i><span><b>Για κάθε στιγμή</b><small>Φαγητό και καθημερινές αγορές</small></span><em>›</em></div>
-          <div className="phone-tabs"><span>⌂<small>Αρχική</small></span><span>▦<small>Ανακάλυψη</small></span><span>♡<small>Αγαπημένα</small></span><span>◯<small>Προφίλ</small></span></div>
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const supabase = await createSupabaseServerClient();
+  let stores: StoreRow[] = [];
+  let newStores: StoreRow[] = [];
+  let activeCount: number | null = null;
+  let catalogError = false;
+
+  if (supabase) {
+    const selectFields = "id,name,description,store_type,city,region,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,created_at";
+    const [storeResult, newStoreResult, countResult] = await Promise.all([
+      supabase.from("stores").select(selectFields).eq("is_active", true).eq("accepts_orders", true).order("name").limit(18),
+      supabase.from("stores").select(selectFields).eq("is_active", true).eq("accepts_orders", true).order("created_at", { ascending: false }).limit(6),
+      supabase.from("stores").select("id", { count: "exact", head: true }).eq("is_active", true).eq("accepts_orders", true)
+    ]);
+    catalogError = Boolean(storeResult.error || newStoreResult.error || countResult.error);
+    stores = (storeResult.data ?? []) as StoreRow[];
+    newStores = (newStoreResult.data ?? []) as StoreRow[];
+    activeCount = countResult.count ?? null;
+  } else {
+    catalogError = true;
+  }
+
+  const availableTypes = new Set(stores.map((store) => store.store_type));
+  const visibleCategories = categoryLinks.filter((item) => availableTypes.has(item.type));
+  const storeIds = new Set(stores.map((store) => store.id));
+  const additionalNewStores = newStores.filter((store) => !storeIds.has(store.id));
+  const latestStores = additionalNewStores.length > 0 ? additionalNewStores : newStores;
+
+  return (
+    <main className="public-page market-home">
+      <SiteHeader />
+      <section className="market-hero">
+        <div className="market-hero-inner">
+          <div className="market-hero-copy">
+            <div className="market-eyebrow"><span /> E-DELIVERY · Η ΑΓΟΡΑ ΤΗΣ ΓΕΙΤΟΝΙΑΣ ΣΟΥ</div>
+            <h1>Ο καφές σου.<br />Το φαγητό σου.<br /><span>Όλα πιο κοντά.</span></h1>
+            <p>Ανακάλυψε συνεργαζόμενα καταστήματα στην περιοχή σου. Δες κόστος παράδοσης, ελάχιστη παραγγελία και χρόνο προετοιμασίας πριν επιλέξεις.</p>
+            <form className="market-search" action="/explore" method="get">
+              <label className="market-search-field">
+                <span aria-hidden="true">⌕</span>
+                <input name="q" placeholder="Τι ψάχνεις σήμερα;" aria-label="Αναζήτηση καταστήματος ή περιοχής" />
+              </label>
+              <label className="market-search-field postcode">
+                <span aria-hidden="true">⌖</span>
+                <input name="postal_code" inputMode="numeric" maxLength={5} placeholder="Τ.Κ." aria-label="Ταχυδρομικός κώδικας" />
+              </label>
+              <button type="submit">Βρες καταστήματα <span aria-hidden="true">→</span></button>
+            </form>
+            <div className="market-hero-facts">
+              <span><b>{activeCount === null ? "Τοπικά" : activeCount.toLocaleString("el-GR")}</b> ενεργά καταστήματα</span>
+              <span><i /> Εμφάνιση βάσει διαθεσιμότητας</span>
+            </div>
+          </div>
+          <div className="market-hero-visual" aria-hidden="true">
+            <div className="market-hero-orbit orbit-a" />
+            <div className="market-hero-orbit orbit-b" />
+            <div className="market-yellow-shape" />
+            <div className="market-red-shape" />
+            <div className="market-hero-card">
+              <span className="market-card-kicker">ΣΗΜΕΡΑ, ΤΙ ΘΑ ΠΑΡΑΓΓΕΙΛΕΙΣ;</span>
+              <div className="market-hero-emoji-row"><span>☕</span><span>🍕</span><span>🛒</span></div>
+              <strong>Από τα αγαπημένα σου<br />καταστήματα.</strong>
+              <small>Μία αναζήτηση. Πολλές επιλογές.</small>
+              <div className="market-hero-card-footer"><span>e</span> e-delivery <i>● ● ●</i></div>
+            </div>
+            <div className="market-float-pill float-top">☕ Καφές</div>
+            <div className="market-float-pill float-bottom">🛍️ Τοπικές αγορές</div>
+          </div>
         </div>
-        <div className="floating-order-card"><span className="floating-order-icon">✓</span><div><b>Έτοιμο για ανακάλυψη</b><small>Οι επιλογές σου, σε ένα μέρος</small></div></div>
-        <div className="hero-art-caption">ONE APP <span>·</span> LOCAL LIFE</div>
-      </div>
-    </section>
-    <section className="category-section">
-      <div className="section-heading"><div><span className="section-eyebrow">ΔΙΑΛΕΞΕ ΤΙ ΧΡΕΙΑΖΕΣΑΙ</span><h2>Η γειτονιά σου, <span>πιο κοντά.</span></h2></div><Link href="/explore" className="text-link">Όλες οι επιχειρήσεις <span>→</span></Link></div>
-      <div className="category-grid">{categories.map((item) => item.href ? <Link className={`category-card ${item.tone}`} href={item.href} key={item.title}><span className="category-icon">{item.icon}</span><span className="category-title">{item.title}</span><span className="category-subtitle">{item.sub}</span><span className="category-arrow">↗</span></Link> : <article className={`category-card ${item.tone} coming-soon`} key={item.title} aria-disabled="true"><span className="category-icon">{item.icon}</span><span className="category-title">{item.title}</span><span className="category-subtitle">{item.sub}</span><span className="coming-soon-label">Σύντομα</span></article>)}</div>
-      <p className="availability-note">Οι επιχειρήσεις εμφανίζονται ανάλογα με την ενεργή κάλυψη της περιοχής σου.</p>
-    </section>
-    <section className="how-section" id="how-it-works">
-      <div className="section-heading"><div><span className="section-eyebrow">ΑΠΛΑ ΚΑΙ ΚΑΘΑΡΑ</span><h2>Από την αναζήτηση <span>στην πόρτα σου.</span></h2></div></div>
-      <div className="how-grid">
-        <article><span>01</span><div className="how-icon">⌖</div><h3>Βρες την περιοχή σου</h3><p>Επίλεξε διεύθυνση και δες τις επιχειρήσεις που μπορούν πραγματικά να σε εξυπηρετήσουν.</p></article>
-        <article><span>02</span><div className="how-icon">▦</div><h3>Διάλεξε αυτό που θέλεις</h3><p>Περιηγήσου σε καταστήματα και προϊόντα με καθαρές τιμές και πληροφορίες.</p></article>
-        <article><span>03</span><div className="how-icon">↗</div><h3>Παράγγειλε με σιγουριά</h3><p>Δες το σύνολο πριν ολοκληρώσεις και κράτησε το ιστορικό σου στον λογαριασμό σου.</p></article>
-      </div>
-    </section>
-    <section className="partner-band" id="partners">
-      <div><span className="section-eyebrow">E-DELIVERY NETWORK</span><h2>Μαζί, δίνουμε<br/>περισσότερη αξία <span>σε κάθε διαδρομή.</span></h2><p>Συνεργαζόμαστε με τοπικές επιχειρήσεις και δίκτυα διανομής για να φέρνουμε περισσότερες επιλογές κοντά στους ανθρώπους.</p></div>
-      <div className="partner-actions">
-        <Link href="/merchant" className="partner-action"><span>🏪</span><b>Είμαι επιχείρηση</b><small>Πλατφόρμα συνεργατών</small><i>↗</i></Link>
-        <Link href="/courier" className="partner-action"><span>🛵</span><b>Είμαι διανομέας</b><small>Δίκτυο διανομής</small><i>↗</i></Link>
-        <Link href="/ops/login" className="partner-action"><span>⚙</span><b>Είσοδος OPS</b><small>Για εξουσιοδοτημένη ομάδα</small><i>↗</i></Link>
-      </div>
-    </section>
-    <SiteFooter />
-  </main>;
+      </section>
+
+      <section className="market-payment-strip" aria-label="Τρόποι πληρωμής">
+        <div className="market-payment-inner">
+          <span className="payment-shield">✓</span>
+          <div><strong>Πλήρωσε όπως σε εξυπηρετεί.</strong><small>Αυτή τη στιγμή υποστηρίζεται πληρωμή με μετρητά κατά την παράδοση.</small></div>
+          <span className="payment-method active">Μετρητά κατά την παράδοση</span>
+          <span className="payment-method pending">Online πληρωμές · Σύντομα</span>
+        </div>
+      </section>
+
+      <section className="market-section market-offers-section">
+        <div className="market-section-heading">
+          <div><span className="market-section-kicker">ΓΙΑ ΣΕΝΑ</span><h2>Προσφορές που <span>έρχονται κοντά.</span></h2></div>
+          <span className="market-section-note">Οι προσφορές θα εμφανίζονται εδώ μόλις ενεργοποιηθούν από τα συνεργαζόμενα καταστήματα.</span>
+        </div>
+        <div className="market-offer-empty">
+          <div className="market-offer-mark">%</div>
+          <div><strong>Ετοιμάζουμε τις πρώτες προσφορές.</strong><p>Σύντομα θα ανακαλύπτεις ειδικές τιμές και επιλογές από τα καταστήματα της περιοχής σου.</p></div>
+          <Link href="/explore" className="market-text-link">Ανακάλυψε καταστήματα <span>→</span></Link>
+        </div>
+      </section>
+
+      <section className="market-section market-partners-section">
+        <div className="market-section-heading">
+          <div><span className="market-section-kicker">ΣΥΝΕΡΓΑΖΟΜΕΝΑ ΚΑΤΑΣΤΗΜΑΤΑ</span><h2>Βρες το επόμενο <span>αγαπημένο σου.</span></h2></div>
+          <Link href="/explore" className="market-text-link">Όλα τα καταστήματα <span>→</span></Link>
+        </div>
+        {catalogError ? (
+          <div className="market-catalog-state"><span>⌁</span><h3>Ο κατάλογος συνδέεται σύντομα.</h3><p>Οι διαθέσιμες επιχειρήσεις θα εμφανίζονται εδώ μόλις ενεργοποιηθεί η βάση δεδομένων E-DELIVERY.</p></div>
+        ) : stores.length === 0 ? (
+          <div className="market-catalog-state"><span>⌖</span><h3>Οι πρώτοι συνεργάτες έρχονται.</h3><p>Μόλις ενεργοποιηθούν καταστήματα στην περιοχή σου, θα τα βρεις συγκεντρωμένα εδώ.</p><Link href="/merchant" className="market-text-link">Έχεις επιχείρηση; Συνεργάσου μαζί μας →</Link></div>
+        ) : (
+          <div className="market-store-grid">{stores.slice(0, 9).map((store) => <StoreCard key={store.id} store={store} />)}</div>
+        )}
+      </section>
+
+      <section className="market-section market-categories-section">
+        <div className="market-section-heading">
+          <div><span className="market-section-kicker">ΑΝΑΚΑΛΥΨΕ</span><h2>Για τι έχεις όρεξη <span>σήμερα;</span></h2></div>
+          <Link href="/explore" className="market-text-link">Όλες οι κατηγορίες <span>→</span></Link>
+        </div>
+        {visibleCategories.length > 0 ? (
+          <div className="market-category-grid">{visibleCategories.map((item) => <Link key={item.type} href={`/explore?type=${item.type}`} className={`market-category-tile ${item.tone}`}><span>{item.icon}</span><strong>{item.label}</strong><small>{item.detail}</small><i>↗</i></Link>)}</div>
+        ) : (
+          <div className="market-category-empty">Οι κατηγορίες θα ενεργοποιηθούν μαζί με τα πρώτα διαθέσιμα καταστήματα.</div>
+        )}
+      </section>
+
+      {latestStores.length > 0 && !catalogError ? (
+        <section className="market-section market-new-section">
+          <div className="market-section-heading">
+            <div><span className="market-section-kicker">ΚΑΛΩΣ ΗΡΘΑΝ</span><h2>Νέα καταστήματα <span>στο E-DELIVERY.</span></h2></div>
+            <Link href="/explore" className="market-text-link">Περισσότερα <span>→</span></Link>
+          </div>
+          <div className="market-store-grid">{latestStores.slice(0, 6).map((store) => <StoreCard key={store.id} store={store} isNew />)}</div>
+        </section>
+      ) : null}
+
+      <section className="market-partner-cta">
+        <div><span className="market-section-kicker">E-DELIVERY PARTNERS</span><h2>Έχεις κατάστημα;<br /><span>Γίνε μέρος της διαδρομής.</span></h2><p>Γνώρισε την πλατφόρμα συνεργατών και διαχειρίσου τα προϊόντα και τις παραγγελίες του καταστήματός σου.</p></div>
+        <Link href="/merchant" className="market-cta-button">Συνεργάσου μαζί μας <span>↗</span></Link>
+      </section>
+      <SiteFooter />
+    </main>
+  );
 }
