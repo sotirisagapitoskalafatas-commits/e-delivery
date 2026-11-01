@@ -441,6 +441,24 @@ begin
     raise exception 'invalid_order_items';
   end if;
 
+  v_fingerprint := md5(jsonb_build_object(
+    'store', p_store_id,
+    'address', p_address_id,
+    'fulfillment', p_fulfillment_method,
+    'items', p_items
+  )::text);
+
+  -- A retry of an already committed request returns the original order even if a menu item changed later.
+  select o.id, o.request_fingerprint into v_order_id, v_existing_fingerprint
+  from public.orders o
+  where o.customer_id = v_customer_id and o.idempotency_key = p_idempotency_key;
+  if found then
+    if v_existing_fingerprint is distinct from v_fingerprint then
+      raise exception 'idempotency_key_reused_with_different_payload';
+    end if;
+    return v_order_id;
+  end if;
+
   select * into v_store
   from public.stores s
   where s.id = p_store_id and s.is_active and s.accepts_orders
@@ -495,13 +513,6 @@ begin
   );
   v_total := v_subtotal + v_store.base_delivery_fee_cents;
   if v_total > 2147483647 then raise exception 'order_total_too_large'; end if;
-
-  v_fingerprint := md5(jsonb_build_object(
-    'store', p_store_id,
-    'address', p_address_id,
-    'fulfillment', p_fulfillment_method,
-    'items', p_items
-  )::text);
 
   insert into public.orders (
     customer_id, store_id, status, fulfillment_method, payment_method, payment_status,
