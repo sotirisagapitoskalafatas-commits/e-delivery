@@ -265,6 +265,8 @@ export default function App() {
     const row = data as Address;
     setAddresses((current) => [row, ...current]);
     setAddressId(row.id);
+    setSearchAddress(`${row.line1}, ${row.city}`);
+    setSearchPostalCode(row.postal_code);
     setLine1("");
     setPostalCode("");
     setError("");
