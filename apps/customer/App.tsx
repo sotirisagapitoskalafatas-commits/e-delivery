@@ -140,6 +140,12 @@ export default function App() {
     setError("");
   }
 
+  async function signOut() {
+    const client = supabase;
+    if (!client) return;
+    await client.auth.signOut();
+  }
+
   async function placeOrder() {
     if (!supabase || !store || !selectedAddress || count === 0) {
       setError("Επίλεξε διεύθυνση και τουλάχιστον ένα προϊόν.");
@@ -186,7 +192,7 @@ export default function App() {
       <View style={styles.headerActions}>
         <Pressable onPress={() => { setStore(null); setScreen("stores"); }}><Text style={screen === "stores" ? styles.navSelected : styles.navLink}>Καταστήματα</Text></Pressable>
         <Pressable onPress={() => { setStore(null); setScreen("orders"); void loadOrders(); }}><Text style={screen === "orders" ? styles.navSelected : styles.navLink}>Παραγγελίες ({orders.length})</Text></Pressable>
-        <Pressable onPress={() => supabase.auth.signOut()}><Text style={styles.logout}>Έξοδος</Text></Pressable>
+        <Pressable onPress={() => { void signOut(); }}><Text style={styles.logout}>Έξοδος</Text></Pressable>
       </View>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
