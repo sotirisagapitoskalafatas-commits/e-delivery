@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Delivery",
+    "slug": "delivery-customer",
+    "scheme": "delivery",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "gr.example.delivery.customer" },
+    "android": { "package": "gr.example.delivery.customer" }
+  }
+}
