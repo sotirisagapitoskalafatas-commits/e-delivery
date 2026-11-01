@@ -181,16 +181,16 @@ export default async function HomePage() {
               </span><br />στη γειτονιά σου.<br /><span>Όλα πιο κοντά.</span>
             </h1>
             <p>Φαγητό, καφές, ψώνια και καθημερινές αγορές από τοπικές επιχειρήσεις. Βάλε τον ταχυδρομικό σου κώδικα και δες τι εξυπηρετεί πραγματικά την περιοχή σου.</p>
-            <form className="market-search" action="/explore" method="get">
+<div className="market-address-intro"><span>ΠΟΥ ΘΕΛΕΙΣ ΝΑ ΠΑΡΑΔΟΘΕΙ;</span><strong>Βάλε τη διεύθυνσή σου</strong><small>Ελέγχουμε τη διαθεσιμότητα με βάση τον ταχυδρομικό κώδικα.</small></div>            <form className="market-search" action="/explore" method="get">
               <label className="market-search-field">
-                <span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4.5 4.5"/></svg></span>
-                <input name="q" placeholder="Κατάστημα, προϊόν ή περιοχή" aria-label="Αναζήτηση καταστήματος, προϊόντος ή περιοχής" />
+                <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 10.2c0 5-7 10.2-7 10.2S5 15.2 5 10.2a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.2"/></svg></span>
+                <input name="address" maxLength={120} placeholder="Οδός και αριθμός (προαιρετικό)" aria-label="Διεύθυνση παράδοσης" />
               </label>
               <label className="market-search-field postcode">
                 <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 10.2c0 5-7 10.2-7 10.2S5 15.2 5 10.2a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.2"/></svg></span>
-                <input name="postal_code" inputMode="numeric" pattern="[0-9]{5}" minLength={5} maxLength={5} placeholder="Τ.Κ. 5 ψηφίων" aria-label="Ταχυδρομικός κώδικας 5 ψηφίων" />
+                <input name="postal_code" inputMode="numeric" pattern="[0-9]{5}" minLength={5} maxLength={5} required placeholder="Τ.Κ. 5 ψηφίων" aria-label="Ταχυδρομικός κώδικας 5 ψηφίων" />
               </label>
-              <button type="submit">Βρες καταστήματα <span aria-hidden="true">→</span></button>
+              <button type="submit">Δες τι παραδίδεται <span aria-hidden="true">→</span></button>
             </form>
             <div className="market-hero-shortcuts" aria-label="Γρήγορη επιλογή κατηγορίας">
               <Link href="/explore?category=food"><MarketplaceIcon type="restaurant" /> Φαγητό & καφές</Link>
