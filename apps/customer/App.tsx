@@ -7,6 +7,8 @@ type Store = { id: string; name: string; description: string | null; city: strin
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[] };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
+type StoreCategory = "all" | "food" | "groceries" | "shops";
+type HomeScreen = "stores" | "orders" | "services" | "express";
 
 const euro = (cents: number) => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
 
@@ -30,7 +32,26 @@ export default function App() {
   const [placing, setPlacing] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
-  const [screen, setScreen] = useState<"stores" | "orders">("stores");
+  const [serviceProviders, setServiceProviders] = useState<Store[]>([]);
+  const [serviceProvider, setServiceProvider] = useState<Store | null>(null);
+  const [screen, setScreen] = useState<HomeScreen>("stores");
+  const [category, setCategory] = useState<StoreCategory>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [serviceTitle, setServiceTitle] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [serviceSubmitting, setServiceSubmitting] = useState(false);
+  const [serviceConfirmation, setServiceConfirmation] = useState("");
+  const [pickupAddressId, setPickupAddressId] = useState("");
+  const [dropoffAddressId, setDropoffAddressId] = useState("");
+  const [pickupContactName, setPickupContactName] = useState("");
+  const [pickupPhone, setPickupPhone] = useState("");
+  const [dropoffContactName, setDropoffContactName] = useState("");
+  const [dropoffPhone, setDropoffPhone] = useState("");
+  const [parcelDescription, setParcelDescription] = useState("");
+  const [parcelSize, setParcelSize] = useState<"small" | "medium" | "large">("small");
+  const [expressSubmitting, setExpressSubmitting] = useState(false);
+  const [expressConfirmation, setExpressConfirmation] = useState("");
+  const [expressKey, setExpressKey] = useState(() => `express-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"platform" | "merchant" | "independent">("platform");
   const [checkoutKey, setCheckoutKey] = useState(() => `checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
 
@@ -45,18 +66,25 @@ export default function App() {
     if (!session || !supabase) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(60),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
       supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
       supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30)
-    ]).then(([storeResult, addressResult, orderResult]) => {
+    ]).then(([storeResult, serviceResult, addressResult, orderResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
       else setStores((storeResult.data ?? []) as Store[]);
+      if (serviceResult.error) setError("Δεν ήταν δυνατή η φόρτωση υπηρεσιών της περιοχής.");
+      else setServiceProviders((serviceResult.data ?? []) as Store[]);
       if (addressResult.error) setError("Δεν ήταν δυνατή η φόρτωση διευθύνσεων.");
       else {
         const rows = (addressResult.data ?? []) as Address[];
         setAddresses(rows);
-        if (rows[0]) setAddressId(rows[0].id);
+        if (rows[0]) {
+          setAddressId(rows[0].id);
+          setPickupAddressId((current) => current || rows[0]!.id);
+          setDropoffAddressId((current) => current || rows[1]?.id || rows[0]!.id);
+        }
       }
       if (orderResult.error) setError("Δεν ήταν δυνατή η φόρτωση ιστορικού παραγγελιών.");
       else setOrders((orderResult.data ?? []) as Order[]);
@@ -99,9 +127,24 @@ export default function App() {
   useEffect(() => {
     if (store) setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
   }, [store?.id, addressId, cartSignature, fulfillmentMethod]);
-  const visibleStores = selectedAddress
-    ? stores.filter((candidate) => candidate.service_postal_codes.includes(selectedAddress.postal_code))
-    : stores;
+  const storeTypesByCategory: Record<StoreCategory, string[]> = {
+    all: ["restaurant", "cafe", "bakery", "supermarket", "convenience", "retail", "pharmacy", "flower_shop", "pet_shop", "other"],
+    food: ["restaurant", "cafe", "bakery"],
+    groceries: ["supermarket", "convenience"],
+    shops: ["retail", "pharmacy", "flower_shop", "pet_shop", "other"]
+  };
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase("el-GR");
+  const visibleStores = stores.filter((candidate) => {
+    const inCoverage = !selectedAddress || candidate.service_postal_codes.includes(selectedAddress.postal_code);
+    const inCategory = storeTypesByCategory[category].includes(candidate.store_type);
+    const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
+    return inCoverage && inCategory && matchesSearch;
+  });
+  const visibleServices = serviceProviders.filter((candidate) => {
+    const inCoverage = !selectedAddress || candidate.service_postal_codes.includes(selectedAddress.postal_code);
+    const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
+    return inCoverage && matchesSearch;
+  });
 
   async function signIn() {
     setError("");
@@ -144,6 +187,88 @@ export default function App() {
     const client = supabase;
     if (!client) return;
     await client.auth.signOut();
+  }
+
+  async function submitServiceRequest() {
+    const client = supabase;
+    if (!client || !session || !serviceProvider || !selectedAddress) {
+      setError("Επίλεξε πάροχο και διεύθυνση εξυπηρέτησης.");
+      return;
+    }
+    if (serviceProvider.service_postal_codes.length > 0 && !serviceProvider.service_postal_codes.includes(selectedAddress.postal_code)) {
+      setError("Ο πάροχος δεν εξυπηρετεί τον συγκεκριμένο ταχυδρομικό κώδικα.");
+      return;
+    }
+    if (serviceDescription.trim().length < 10) {
+      setError("Περιέγραψε λίγο πιο αναλυτικά τι χρειάζεσαι.");
+      return;
+    }
+
+    setServiceSubmitting(true);
+    setError("");
+    const { data, error: requestError } = await client.from("service_bookings").insert({
+      customer_id: session.user.id,
+      store_id: serviceProvider.id,
+      service_title: serviceTitle.trim() || "Αίτημα υπηρεσίας",
+      request_description: serviceDescription.trim(),
+      service_address_snapshot: {
+        label: selectedAddress.label,
+        line1: selectedAddress.line1,
+        city: selectedAddress.city,
+        postal_code: selectedAddress.postal_code
+      }
+    }).select("id,status").single();
+    setServiceSubmitting(false);
+
+    if (requestError || !data) {
+      setError("Το αίτημα δεν καταχωρήθηκε. Έλεγξε ότι ο πάροχος δέχεται αιτήματα υπηρεσιών.");
+      return;
+    }
+    setServiceConfirmation(data.id);
+    setServiceTitle("");
+    setServiceDescription("");
+    setServiceProvider(null);
+  }
+
+  async function submitExpressRequest() {
+    const client = supabase;
+    if (!client) return;
+    if (!pickupAddressId || !dropoffAddressId || pickupAddressId === dropoffAddressId) {
+      setError("Επίλεξε δύο διαφορετικές αποθηκευμένες διευθύνσεις για παραλαβή και παράδοση.");
+      return;
+    }
+    if (!pickupContactName.trim() || !pickupPhone.trim() || !dropoffContactName.trim() || !dropoffPhone.trim()) {
+      setError("Συμπλήρωσε στοιχεία επικοινωνίας και για τα δύο σημεία.");
+      return;
+    }
+    if (parcelDescription.trim().length < 5) {
+      setError("Περιέγραψε σύντομα το δέμα.");
+      return;
+    }
+
+    setExpressSubmitting(true);
+    setError("");
+    const { data, error: requestError } = await client.rpc("create_express_delivery_request", {
+      p_pickup_address_id: pickupAddressId,
+      p_dropoff_address_id: dropoffAddressId,
+      p_pickup_contact_name: pickupContactName.trim(),
+      p_pickup_phone: pickupPhone.trim(),
+      p_dropoff_contact_name: dropoffContactName.trim(),
+      p_dropoff_phone: dropoffPhone.trim(),
+      p_parcel_description: parcelDescription.trim(),
+      p_parcel_size: parcelSize,
+      p_scheduled_at: null,
+      p_idempotency_key: expressKey
+    });
+    setExpressSubmitting(false);
+
+    if (requestError) {
+      setError("Το αίτημα express δεν καταχωρήθηκε. Έλεγξε τις διευθύνσεις και τα στοιχεία επικοινωνίας.");
+      return;
+    }
+    setExpressConfirmation(String(data));
+    setParcelDescription("");
+    setExpressKey(`express-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
   }
 
   async function placeOrder() {
@@ -190,15 +315,51 @@ export default function App() {
     <View style={styles.header}>
       <View><Text style={styles.brand}>e-delivery</Text><Text style={styles.mutedSmall}>Η γειτονιά σου, σε ένα app</Text></View>
       <View style={styles.headerActions}>
-        <Pressable onPress={() => { setStore(null); setScreen("stores"); }}><Text style={screen === "stores" ? styles.navSelected : styles.navLink}>Καταστήματα</Text></Pressable>
-        <Pressable onPress={() => { setStore(null); setScreen("orders"); void loadOrders(); }}><Text style={screen === "orders" ? styles.navSelected : styles.navLink}>Παραγγελίες ({orders.length})</Text></Pressable>
+        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("stores"); }}><Text style={screen === "stores" ? styles.navSelected : styles.navLink}>Ανακάλυψη</Text></Pressable>
+        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("express"); }}><Text style={screen === "express" ? styles.navSelected : styles.navLink}>Express</Text></Pressable>
+        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("services"); }}><Text style={screen === "services" ? styles.navSelected : styles.navLink}>Υπηρεσίες</Text></Pressable>
+        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("orders"); void loadOrders(); }}><Text style={screen === "orders" ? styles.navSelected : styles.navLink}>Παραγγελίες ({orders.length})</Text></Pressable>
         <Pressable onPress={() => { void signOut(); }}><Text style={styles.logout}>Έξοδος</Text></Pressable>
       </View>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
       {confirmation ? <View style={styles.confirm}><Text style={styles.confirmTitle}>Η παραγγελία καταχωρήθηκε</Text><Text style={styles.muted}>Κωδικός: {confirmation}</Text><Text style={styles.muted}>Πληρωμή: μετρητά κατά την παράδοση.</Text><Pressable onPress={() => setConfirmation("")}><Text style={styles.link}>Συνέχεια αγορών</Text></Pressable></View> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {screen === "orders" && !store ? <>
+      {screen === "express" && !store ? <>
+        <Pressable onPress={() => setScreen("stores")}><Text style={styles.back}>‹ Ανακάλυψη</Text></Pressable>
+        <View style={styles.hero}><Text style={styles.eyebrow}>E-DELIVERY EXPRESS</Text><Text style={styles.heroTitle}>Στείλε κάτι{"\n"}στη στιγμή.</Text><Text style={styles.muted}>Καταχώρησε το αίτημα αποστολής. Η ομάδα θα επιβεβαιώσει διαθεσιμότητα και τελική χρέωση πριν προχωρήσει η αποστολή.</Text></View>
+        {expressConfirmation ? <View style={styles.confirm}><Text style={styles.confirmTitle}>Το αίτημα καταχωρήθηκε</Text><Text style={styles.muted}>Κωδικός: {expressConfirmation}</Text><Text style={styles.muted}>Δεν έγινε χρέωση. Θα επιβεβαιωθούν τιμή και διαθεσιμότητα πριν την αποδοχή.</Text></View> : null}
+        <Text style={styles.sectionTitle}>Παραλαβή από</Text>
+        {addresses.map((address) => <Pressable key={address.id} style={[styles.address, pickupAddressId === address.id && styles.addressSelected]} onPress={() => setPickupAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+        <TextInput style={styles.input} placeholder="Όνομα αποστολέα" value={pickupContactName} onChangeText={setPickupContactName} />
+        <TextInput style={styles.input} placeholder="Τηλέφωνο αποστολέα" keyboardType="phone-pad" value={pickupPhone} onChangeText={setPickupPhone} />
+        <Text style={styles.sectionTitle}>Παράδοση σε</Text>
+        {addresses.map((address) => <Pressable key={address.id} style={[styles.address, dropoffAddressId === address.id && styles.addressSelected]} onPress={() => setDropoffAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+        <TextInput style={styles.input} placeholder="Όνομα παραλήπτη" value={dropoffContactName} onChangeText={setDropoffContactName} />
+        <TextInput style={styles.input} placeholder="Τηλέφωνο παραλήπτη" keyboardType="phone-pad" value={dropoffPhone} onChangeText={setDropoffPhone} />
+        <Text style={styles.sectionTitle}>Στοιχεία δέματος</Text>
+        <View style={styles.sizeRow}>
+          {(["small", "medium", "large"] as const).map((size) => <Pressable key={size} style={[styles.sizeOption, parcelSize === size && styles.sizeOptionSelected]} onPress={() => setParcelSize(size)}><Text style={parcelSize === size ? styles.sizeTextSelected : styles.sizeText}>{size === "small" ? "Μικρό" : size === "medium" ? "Μεσαίο" : "Μεγάλο"}</Text></Pressable>)}
+        </View>
+        <TextInput style={[styles.input, styles.multiline]} multiline numberOfLines={4} placeholder="Τι περιέχει το δέμα; (χωρίς ευαίσθητα ή απαγορευμένα αντικείμενα)" value={parcelDescription} onChangeText={setParcelDescription} />
+        <View style={styles.noticeCard}><Text style={styles.mutedSmall}>Αυτό είναι αίτημα προσφοράς/διαθεσιμότητας. Δεν αποτελεί επιβεβαιωμένη αποστολή και δεν γίνεται χρέωση σε αυτό το βήμα.</Text></View>
+        {addresses.length < 2 ? <Text style={styles.error}>Χρειάζεσαι δύο διαφορετικές αποθηκευμένες διευθύνσεις για να υποβάλεις αίτημα express.</Text> : null}
+        <Pressable style={styles.primary} onPress={submitExpressRequest} disabled={expressSubmitting || addresses.length < 2}><Text style={styles.primaryText}>{expressSubmitting ? "Υποβολή…" : "Υποβολή αιτήματος express"}</Text></Pressable>
+      </> : screen === "services" && !store ? <>
+        <Pressable onPress={() => { setServiceProvider(null); setScreen("stores"); }}><Text style={styles.back}>‹ Ανακάλυψη</Text></Pressable>
+        <Text style={styles.title}>Υπηρεσίες στην περιοχή σου</Text>
+        {serviceConfirmation ? <View style={styles.confirm}><Text style={styles.confirmTitle}>Το αίτημα στάλθηκε</Text><Text style={styles.muted}>Κωδικός: {serviceConfirmation}</Text><Text style={styles.muted}>Ο πάροχος θα ελέγξει το αίτημα και θα επιβεβαιώσει διαθεσιμότητα/τιμή. Δεν έγινε πληρωμή.</Text></View> : null}
+        {serviceProvider ? <>
+          <Text style={styles.sectionTitle}>{serviceProvider.name}</Text>
+          <Text style={styles.muted}>{serviceProvider.description ?? "Περιέγραψε την υπηρεσία που χρειάζεσαι."}</Text>
+          <Text style={styles.sectionTitle}>Διεύθυνση εξυπηρέτησης</Text>
+          {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+          <TextInput style={styles.input} placeholder="Τι υπηρεσία χρειάζεσαι;" value={serviceTitle} onChangeText={setServiceTitle} />
+          <TextInput style={[styles.input, styles.multiline]} multiline numberOfLines={5} placeholder="Περιέγραψε το αίτημά σου με λεπτομέρειες." value={serviceDescription} onChangeText={setServiceDescription} />
+          <View style={styles.noticeCard}><Text style={styles.mutedSmall}>Ο πάροχος θα απαντήσει με διαθεσιμότητα και προσφορά. Δεν γίνεται πληρωμή σε αυτό το βήμα.</Text></View>
+          <Pressable style={styles.primary} onPress={submitServiceRequest} disabled={serviceSubmitting || !selectedAddress}><Text style={styles.primaryText}>{serviceSubmitting ? "Υποβολή…" : "Αποστολή αιτήματος"}</Text></Pressable>
+        </> : visibleServices.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν βρέθηκαν διαθέσιμοι πάροχοι υπηρεσιών</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο σε επιβεβαιωμένες περιοχές. Δοκίμασε άλλη αποθηκευμένη διεύθυνση.</Text></View> : visibleServices.map((provider) => <Pressable key={provider.id} style={styles.store} onPress={() => setServiceProvider(provider)}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>🛠</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{provider.name}</Text><Text style={styles.mutedSmall}>{provider.description ?? provider.city}</Text><Text style={styles.mutedSmall}>{provider.city}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
+      </> : screen === "orders" && !store ? <>
         <Pressable onPress={() => setScreen("stores")}><Text style={styles.back}>‹ Καταστήματα</Text></Pressable>
         <Text style={styles.title}>Οι παραγγελίες μου</Text>
         <Text style={styles.muted}>Η κατάσταση ενημερώνεται από το κατάστημα και την ομάδα διανομής.</Text>
@@ -233,10 +394,14 @@ export default function App() {
           <Pressable style={styles.primary} onPress={placeOrder} disabled={placing || count === 0 || subtotal < store.minimum_order_cents}><Text style={styles.primaryText}>{placing ? "Καταχώρηση…" : "Επιβεβαίωση παραγγελίας"}</Text></Pressable>
         </View>
       </> : <>
-        <View style={styles.hero}><Text style={styles.eyebrow}>ATHENS · LOCAL DELIVERY</Text><Text style={styles.heroTitle}>Κάτι καλό,{"\n"}λίγα λεπτά μακριά.</Text><Text style={styles.muted}>Ανακάλυψε τα καταστήματα που εξυπηρετούν την περιοχή σου.</Text></View>
-        <Text style={styles.sectionTitle}>Καταστήματα κοντά σου</Text>
-        {!selectedAddress ? <Text style={styles.mutedSmall}>Πρόσθεσε διεύθυνση για να δεις ποια καταστήματα εξυπηρετούν την περιοχή σου.</Text> : null}
-        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν υπάρχουν διαθέσιμα καταστήματα για αυτή τη διεύθυνση</Text><Text style={styles.mutedSmall}>Τα καταστήματα εμφανίζονται όταν ενεργοποιηθούν και ρυθμιστεί η περιοχή εξυπηρέτησής τους.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>{item.store_type === "restaurant" ? "🍽" : item.store_type === "bakery" ? "🥐" : "🛍"}</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
+        <View style={styles.hero}><Text style={styles.eyebrow}>GREECE · LOCAL DELIVERY</Text><Text style={styles.heroTitle}>Ό,τι χρειάζεσαι,{"\n"}κοντά σου.</Text><Text style={styles.muted}>Ανακάλυψε καταστήματα και τοπικές επιχειρήσεις που εξυπηρετούν την επιλεγμένη διεύθυνσή σου.</Text></View>
+        <TextInput style={styles.input} placeholder="Αναζήτηση καταστημάτων και προϊόντων" value={searchQuery} onChangeText={setSearchQuery} />
+        <View style={styles.categoryRow}>
+          {([{ id: "all", label: "Όλα" }, { id: "food", label: "Φαγητό" }, { id: "groceries", label: "Supermarket" }, { id: "shops", label: "Καταστήματα" }] as const).map((item) => <Pressable key={item.id} style={[styles.categoryChip, category === item.id && styles.categoryChipSelected]} onPress={() => setCategory(item.id)}><Text style={category === item.id ? styles.categoryTextSelected : styles.categoryText}>{item.label}</Text></Pressable>)}
+        </View>
+        <Text style={styles.sectionTitle}>Διαθέσιμα κοντά σου</Text>
+        {!selectedAddress ? <Text style={styles.mutedSmall}>Πρόσθεσε διεύθυνση για να δεις ποιες επιχειρήσεις εξυπηρετούν την περιοχή σου.</Text> : null}
+        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν υπάρχουν διαθέσιμες επιχειρήσεις για αυτή τη διεύθυνση</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο όταν έχει επιβεβαιωθεί η κάλυψη και η δυνατότητα εξυπηρέτησης.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>{["restaurant","cafe"].includes(item.store_type) ? "🍽" : item.store_type === "bakery" ? "🥐" : ["supermarket","convenience"].includes(item.store_type) ? "🛒" : item.store_type === "pharmacy" ? "💊" : item.store_type === "flower_shop" ? "💐" : item.store_type === "pet_shop" ? "🐾" : "🛍"}</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
         {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
         <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
@@ -253,7 +418,19 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#F7F7F8" },
   authWrap: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
   header: { paddingHorizontal: 22, paddingVertical: 14, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 9, flexWrap: "wrap", justifyContent: "flex-end" },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  categoryChip: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5EAF2", borderRadius: 999, paddingVertical: 9, paddingHorizontal: 13 },
+  categoryChipSelected: { backgroundColor: "#FFC928", borderColor: "#FFC928" },
+  categoryText: { color: "#566174", fontWeight: "700", fontSize: 11 },
+  categoryTextSelected: { color: "#171717", fontWeight: "900", fontSize: 11 },
+  sizeRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  sizeOption: { flex: 1, padding: 12, borderRadius: 11, borderWidth: 1, borderColor: "#E5EAF2", backgroundColor: "white", alignItems: "center" },
+  sizeOptionSelected: { backgroundColor: "#FFF3C8", borderColor: "#FFC928" },
+  sizeText: { color: "#566174", fontWeight: "700", fontSize: 11 },
+  sizeTextSelected: { color: "#171717", fontWeight: "900", fontSize: 11 },
+  multiline: { minHeight: 100, textAlignVertical: "top" },
+  noticeCard: { marginTop: 10, padding: 14, borderRadius: 13, backgroundColor: "#FFF8E5", borderWidth: 1, borderColor: "#FFE4A3" },
   navLink: { color: "#7E899C", fontSize: 11, fontWeight: "700" },
   navSelected: { color: "#E31E24", fontSize: 11, fontWeight: "900" },
   content: { padding: 20, paddingBottom: 48, gap: 12 },
