@@ -344,14 +344,24 @@ create policy memberships_read_self_or_ops on public.merchant_memberships
 for select to authenticated using (user_id = (select auth.uid()) or private.is_ops_admin());
 
 create policy stores_public_catalog_read on public.stores
-for select to anon, authenticated using (is_active and accepts_orders);
+for select to anon, authenticated
+using (
+  is_active and accepts_orders
+  and exists (
+    select 1 from public.merchants m
+    where m.id = merchant_id and m.status = 'active'
+  )
+);
 create policy stores_member_or_ops_read on public.stores
 for select to authenticated using (private.is_ops_admin() or private.is_merchant_member(id, array['owner','manager','staff']));
 
 create policy categories_public_catalog_read on public.categories
 for select to anon, authenticated
 using (is_active and exists (
-  select 1 from public.stores s where s.id = store_id and s.is_active and s.accepts_orders
+  select 1
+  from public.stores s
+  join public.merchants m on m.id = s.merchant_id
+  where s.id = store_id and s.is_active and s.accepts_orders and m.status = 'active'
 ));
 create policy categories_member_read on public.categories
 for select to authenticated
@@ -479,6 +489,10 @@ begin
   select * into v_store
   from public.stores s
   where s.id = p_store_id and s.is_active and s.accepts_orders
+    and exists (
+      select 1 from public.merchants m
+      where m.id = s.merchant_id and m.status = 'active'
+    )
   for share;
   if not found then raise exception 'store_unavailable'; end if;
 
