@@ -5,6 +5,8 @@ import { supabase } from "./src/supabase";
 
 type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[] };
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
+type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
+type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[] };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
 type StoreCategory = "all" | "food" | "groceries" | "shops";
@@ -32,6 +34,8 @@ export default function App() {
   const [placing, setPlacing] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [expressRequests, setExpressRequests] = useState<ExpressRequest[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [serviceProviders, setServiceProviders] = useState<Store[]>([]);
   const [serviceProvider, setServiceProvider] = useState<Store | null>(null);
   const [screen, setScreen] = useState<HomeScreen>("stores");
@@ -69,8 +73,10 @@ export default function App() {
       supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
       supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
       supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
-      supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30)
-    ]).then(([storeResult, serviceResult, addressResult, orderResult]) => {
+      supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
+      supabase.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
+      supabase.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30)
+    ]).then(([storeResult, serviceResult, addressResult, orderResult, expressResult, bookingResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
       else setStores((storeResult.data ?? []) as Store[]);
@@ -88,6 +94,10 @@ export default function App() {
       }
       if (orderResult.error) setError("Δεν ήταν δυνατή η φόρτωση ιστορικού παραγγελιών.");
       else setOrders((orderResult.data ?? []) as Order[]);
+      if (expressResult.error) setError("Δεν ήταν δυνατή η φόρτωση αιτημάτων express.");
+      else setExpressRequests((expressResult.data ?? []) as ExpressRequest[]);
+      if (bookingResult.error) setError("Δεν ήταν δυνατή η φόρτωση αιτημάτων υπηρεσιών.");
+      else setServiceRequests((bookingResult.data ?? []) as unknown as ServiceRequest[]);
     });
     return () => { active = false; };
   }, [session]);
@@ -111,17 +121,20 @@ export default function App() {
   const totalCents = subtotal + deliveryFeeCents;
 
   async function loadOrders() {
-    if (!supabase) return;
-    const { data, error: queryError } = await supabase
-      .from("orders")
-      .select("id,status,total_cents,currency,created_at")
-      .order("created_at", { ascending: false })
-      .limit(30);
-    if (queryError) {
-      setError("Δεν ήταν δυνατή η ανανέωση του ιστορικού παραγγελιών.");
+    const client = supabase;
+    if (!client) return;
+    const [orderResult, expressResult, bookingResult] = await Promise.all([
+      client.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
+      client.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
+      client.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30)
+    ]);
+    if (orderResult.error || expressResult.error || bookingResult.error) {
+      setError("Δεν ήταν δυνατή η ανανέωση όλου του ιστορικού αιτημάτων.");
       return;
     }
-    setOrders((data ?? []) as Order[]);
+    setOrders((orderResult.data ?? []) as Order[]);
+    setExpressRequests((expressResult.data ?? []) as ExpressRequest[]);
+    setServiceRequests((bookingResult.data ?? []) as unknown as ServiceRequest[]);
   }
 
   useEffect(() => {
@@ -369,6 +382,20 @@ export default function App() {
           <Text style={styles.total}>{euro(order.total_cents)}</Text>
           <Text style={styles.mutedSmall}>{new Date(order.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
         </View>)}
+        <Text style={styles.sectionTitle}>Αιτήματα Express</Text>
+        {expressRequests.length === 0 ? <Text style={styles.mutedSmall}>Δεν έχεις ακόμη αιτήματα αποστολής.</Text> : expressRequests.map((request) => <View key={request.id} style={styles.requestCard}>
+          <View style={styles.orderHeader}><Text style={styles.productName}>Express · #{request.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.orderStatus}>{request.status.replaceAll("_", " ")}</Text></View>
+          <Text style={styles.mutedSmall}>{request.parcel_description} · {request.parcel_size === "small" ? "Μικρό" : request.parcel_size === "medium" ? "Μεσαίο" : "Μεγάλο"}</Text>
+          <Text style={styles.mutedSmall}>{request.quoted_fee_cents == null ? "Αναμονή επιβεβαίωσης τιμής" : `Προσφορά: ${euro(request.quoted_fee_cents)}`}</Text>
+          <Text style={styles.mutedSmall}>{new Date(request.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+        </View>)}
+        <Text style={styles.sectionTitle}>Αιτήματα υπηρεσιών</Text>
+        {serviceRequests.length === 0 ? <Text style={styles.mutedSmall}>Δεν έχεις ακόμη αιτήματα τοπικών υπηρεσιών.</Text> : serviceRequests.map((request) => <View key={request.id} style={styles.requestCard}>
+          <View style={styles.orderHeader}><Text style={styles.productName}>{request.store?.name ?? "Τοπική υπηρεσία"}</Text><Text style={styles.orderStatus}>{request.status.replaceAll("_", " ")}</Text></View>
+          <Text style={styles.mutedSmall}>{request.service_title}</Text>
+          <Text style={styles.mutedSmall}>{request.quoted_price_cents == null ? "Αναμονή προσφοράς από τον πάροχο" : `Προσφορά: ${euro(request.quoted_price_cents)}`}</Text>
+          <Text style={styles.mutedSmall}>{new Date(request.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+        </View>)}
       </> : store ? <>
         <Pressable onPress={() => { setStore(null); setCart({}); }}><Text style={styles.back}>‹ Καταστήματα</Text></Pressable>
         <Text style={styles.title}>{store.name}</Text><Text style={styles.muted}>{store.description ?? store.city}</Text>
@@ -463,6 +490,7 @@ const styles = StyleSheet.create({
   priceLine: { color: "#43516A", fontSize: 12, fontWeight: "700" },
   totalLabel: { color: "#14223B", fontSize: 14, fontWeight: "900" },
   orderCard: { backgroundColor: "white", padding: 16, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 6 },
+  requestCard: { backgroundColor: "white", padding: 15, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 7 },
   orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
   orderStatus: { color: "#E31E24", fontWeight: "800", fontSize: 10, textTransform: "capitalize" },
   empty: { padding: 20, backgroundColor: "white", borderRadius: 14, gap: 6 },
