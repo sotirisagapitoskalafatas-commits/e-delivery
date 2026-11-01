@@ -98,6 +98,10 @@ export default function App() {
         setStore(null);
         setServiceProvider(null);
         setCart({});
+        setAddresses([]);
+        setAddressId("");
+        setSearchAddress("");
+        setSearchPostalCode("");
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -549,6 +553,7 @@ export default function App() {
               setSearchPostalCode(next);
               if (selectedAddress && selectedAddress.postal_code !== next) setAddressId("");
               setStoreTypeFilter("");
+              setMenuCategoryFilter("");
             }}
             keyboardType="number-pad"
             maxLength={5}
