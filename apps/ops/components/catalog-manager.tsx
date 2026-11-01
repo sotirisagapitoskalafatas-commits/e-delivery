@@ -21,7 +21,8 @@ const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 function publicMediaUrl(path: string | null | undefined) {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base || !path) return null;
-  return `${base.replace(/\\/$/, "")}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const root = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;;
 }
 function imageExtension(file: File) {
   return file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
