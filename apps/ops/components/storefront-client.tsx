@@ -12,7 +12,8 @@ const MEDIA_BUCKET="e-delivery-merchant-media";
 function publicMediaUrl(path:string|null){
   const base=process.env.NEXT_PUBLIC_SUPABASE_URL;
   if(!base||!path)return null;
-  return `${base.replace(/\\/$/,"")}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const root=base.endsWith("/")?base.slice(0,-1):base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 const euro=(cents:number)=>new Intl.NumberFormat("el-GR",{style:"currency",currency:"EUR"}).format(cents/100);
 
