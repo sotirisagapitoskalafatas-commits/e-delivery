@@ -28,6 +28,9 @@ pnpm dev:courier
 ```
 The web workspace is at http://localhost:3000. Mobile apps use Expo development builds. SDK 58 Expo Go availability can lag SDK releases.
 
+## Vercel deployment
+The `e-delivery` Vercel project deploys only `apps/ops` as a Next.js application. Its Root Directory is `apps/ops`, with `npm install` and `npm run build`. The web workspace does not require the shared workspace package at build time. Customer and courier Expo apps remain part of the pnpm workspace and are built/released separately.
+
 ## Checks
 ```bash
 pnpm test

@@ -7,7 +7,7 @@
 4. `packages/domain`: framework-independent money and order lifecycle rules.
 5. `supabase`: PostgreSQL schema, RLS and transactional RPC functions.
 
-The web workspace is role-aware. A dedicated merchant tablet surface can be split out later without changing the domain or database contract.
+The web workspace is role-aware. A dedicated merchant tablet surface can be split out later without changing the domain or database contract. Vercel deploys `apps/ops` as an independent Next.js root; customer/courier Expo clients and the shared domain package stay in the repository's pnpm workspace.
 
 ## Trust boundaries
 - Browser and mobile clients use only the Supabase publishable key.
@@ -23,6 +23,17 @@ The web workspace is role-aware. A dedicated merchant tablet surface can be spli
 Terminal alternatives: `rejected`, `cancelled`.
 
 Merchant delivery may be marked delivered by an authorized store member. Platform delivery is dispatched by operations to an approved courier; the courier accepts, confirms pickup and confirms delivery. Every state transition creates an order event.
+
+## Fulfilment networks
+
+The marketplace supports three distinct fulfilment sources:
+- `merchant`: a merchant's own configured delivery operation;
+- `platform`: a courier approved for the E-DELIVERY fleet;
+- `independent`: a courier affiliated with an approved independent delivery partner.
+
+The independent partner is a verified business record with explicit membership and courier affiliation. Dispatch validates the courier's network against the order's selected fulfilment method. A network label is an operational relationship only; it does not determine legal worker classification.
+
+Parcel requests and service bookings have separate tables/lifecycles. Do not create fake restaurant order items to represent a parcel or appointment. Those flows still require customer/merchant/courier UI, quotes, notifications and acceptance testing before public use.
 
 ## Money and payment
 - Currency is EUR and amounts are integer cents.
