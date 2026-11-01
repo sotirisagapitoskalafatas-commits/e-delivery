@@ -19,6 +19,10 @@ Run this only for the verified internal operator account. Enable MFA for privile
 ## Create a merchant, store and first membership
 
 ```sql
+update public.profiles
+set role = 'merchant_admin'
+where id = (select id from auth.users where email = 'verified-owner@example.gr');
+
 with new_merchant as (
   insert into public.merchants (legal_name, display_name, status)
   values ('VERIFIED LEGAL ENTITY', 'VERIFIED STORE BRAND', 'pending')
