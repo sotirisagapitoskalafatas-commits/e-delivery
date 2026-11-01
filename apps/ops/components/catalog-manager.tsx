@@ -37,10 +37,16 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [allergensText, setAllergensText] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [uploadingMedia, setUploadingMedia] = useState("");
+  const [editingProductId, setEditingProductId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editAllergensText, setEditAllergensText] = useState("");
   const [storeMedia, setStoreMedia] = useState<Record<string, { logo_image_path: string | null; cover_image_path: string | null }>>({});
   const activeStore = stores.find((store) => store.id === storeId);
   const activeMedia = {
@@ -129,7 +135,7 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       price_cents: Math.round(numericPrice * 100),
       currency: "EUR",
       is_available: true,
-      allergens: []
+      allergens: Array.from(new Set(allergensText.split(",").map((value) => value.trim()).filter(Boolean)))
     });
     setSaving(false);
 
@@ -140,7 +146,55 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
     setName("");
     setDescription("");
     setPrice("");
+    setAllergensText("");
     await loadProducts();
+  }
+
+  function beginProductEdit(product: Product) {
+    setEditingProductId(product.id);
+    setEditName(product.name);
+    setEditDescription(product.description ?? "");
+    setEditPrice((product.price_cents / 100).toFixed(2).replace(".", ","));
+    setEditAllergensText(product.allergens.join(", "));
+    setMessage("");
+  }
+
+  function cancelProductEdit() {
+    setEditingProductId("");
+    setEditName("");
+    setEditDescription("");
+    setEditPrice("");
+    setEditAllergensText("");
+  }
+
+  async function saveProductEdit(event: React.FormEvent<HTMLFormElement>, product: Product) {
+    event.preventDefault();
+    const supabase = createSupabaseBrowserClient();
+    const numericPrice = Number(editPrice.replace(",", "."));
+    if (!supabase || !storeId) return;
+    if (!editName.trim() || !Number.isFinite(numericPrice) || numericPrice < 0 || numericPrice > 100000) {
+      setMessage("Συμπλήρωσε ονομασία και έγκυρη τιμή σε ευρώ.");
+      return;
+    }
+
+    const allergens = Array.from(new Set(editAllergensText.split(",").map((value) => value.trim()).filter(Boolean)));
+    setSaving(true);
+    setMessage("");
+    const { error } = await supabase.from("products").update({
+      name: editName.trim(),
+      description: editDescription.trim() || null,
+      price_cents: Math.round(numericPrice * 100),
+      allergens
+    }).eq("id", product.id).eq("store_id", storeId);
+    setSaving(false);
+
+    if (error) {
+      setMessage("Οι αλλαγές δεν αποθηκεύτηκαν. Έλεγξε τα δικαιώματα του καταστήματος.");
+      return;
+    }
+    cancelProductEdit();
+    await loadProducts();
+    setMessage("Τα στοιχεία του προϊόντος ενημερώθηκαν.");
   }
 
   async function toggleAvailability(product: Product) {
@@ -165,8 +219,18 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       .eq("id", product.id)
       .eq("store_id", storeId);
     setSaving(false);
-    if (error) setMessage("Δεν ήταν δυνατή η διαγραφή του προϊόντος.");
-    else await loadProducts();
+    if (error) {
+      setMessage("Δεν ήταν δυνατή η διαγραφή του προϊόντος.");
+    } else {
+      if (product.image_path) {
+        const { error: mediaError } = await supabase.storage.from(MEDIA_BUCKET).remove([product.image_path]);
+        await loadProducts();
+        setMessage(mediaError ? "Το προϊόν διαγράφηκε, αλλά η παλιά φωτογραφία χρειάζεται χειροκίνητο καθαρισμό." : "Το προϊόν και η φωτογραφία του διαγράφηκαν.");
+      } else {
+        await loadProducts();
+        setMessage("Το προϊόν διαγράφηκε.");
+      }
+    }
   }
 
   if (stores.length === 0) {
@@ -200,17 +264,33 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       {loading ? <p className="catalog-empty">Φόρτωση προϊόντων…</p> : products.length === 0 ? <div className="catalog-empty"><h3>Ο κατάλογος είναι ακόμη κενός</h3><p>Πρόσθεσε τα πρώτα πραγματικά προϊόντα και τις τιμές τους.</p></div> : <div className="catalog-list">
         {products.map((product) => <article className="catalog-product" key={product.id}>
           <div className="catalog-product-photo">{publicMediaUrl(product.image_path) ? <img src={publicMediaUrl(product.image_path)!} alt={`Φωτογραφία ${product.name}`} /> : <span>✳</span>}</div>
-          <div className="catalog-product-info">
-            <strong>{product.name}</strong>
-            {product.description ? <p>{product.description}</p> : null}
-            <span>{euro(product.price_cents)} · {product.is_available ? "Διαθέσιμο" : "Μη διαθέσιμο"}</span>
-          </div>
-          {canManage ? <div className="catalog-product-actions">
-            <label className="media-upload-button compact">{uploadingMedia === product.id ? "Μεταφόρτωση…" : "Φωτογραφία"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia) || saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadProductImage(product, file); event.currentTarget.value = ""; }} /></label>
-            <button type="button" className="table-action" disabled={saving} onClick={() => toggleAvailability(product)}>{product.is_available ? "Απόκρυψη" : "Δημοσίευση"}</button>
-            <button type="button" className="table-cancel" disabled={saving} onClick={() => removeProduct(product)}>Διαγραφή</button>
-          </div> : null}
+          {editingProductId === product.id ? <form className="catalog-inline-edit" onSubmit={(event) => void saveProductEdit(event, product)}>
+            <label>Ονομασία<input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={120} required /></label>
+            <label>Περιγραφή<textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} maxLength={500} rows={2} /></label>
+            <div className="catalog-edit-fields">
+              <label>Τιμή (€)<input inputMode="decimal" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} required /></label>
+              <label>Αλλεργιογόνα<input value={editAllergensText} onChange={(event) => setEditAllergensText(event.target.value)} placeholder="π.χ. γλουτένη, γάλα" /></label>
+            </div>
+            <div className="catalog-edit-actions">
+              <button className="primary-button" type="submit" disabled={saving}>{saving ? "Αποθήκευση…" : "Αποθήκευση αλλαγών"}</button>
+              <button className="secondary-button" type="button" disabled={saving} onClick={cancelProductEdit}>Ακύρωση</button>
+            </div>
+          </form> : <>
+            <div className="catalog-product-info">
+              <strong>{product.name}</strong>
+              {product.description ? <p>{product.description}</p> : null}
+              <span>{euro(product.price_cents)} · {product.is_available ? "Διαθέσιμο" : "Μη διαθέσιμο"}</span>
+              {product.allergens.length ? <small>Αλλεργιογόνα: {product.allergens.join(", ")}</small> : null}
+            </div>
+            {canManage ? <div className="catalog-product-actions">
+              <label className="media-upload-button compact">{uploadingMedia === product.id ? "Μεταφόρτωση…" : "Φωτογραφία"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia) || saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadProductImage(product, file); event.currentTarget.value = ""; }} /></label>
+              <button type="button" className="table-action" disabled={saving || Boolean(uploadingMedia)} onClick={() => beginProductEdit(product)}>Επεξεργασία</button>
+              <button type="button" className="table-action" disabled={saving || Boolean(uploadingMedia)} onClick={() => toggleAvailability(product)}>{product.is_available ? "Απόκρυψη" : "Δημοσίευση"}</button>
+              <button type="button" className="table-cancel" disabled={saving || Boolean(uploadingMedia)} onClick={() => removeProduct(product)}>Διαγραφή</button>
+            </div> : null}
+          </>}
         </article>)}
+
       </div>}
     </section>
 
@@ -223,9 +303,11 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
         <textarea id="product-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={3} placeholder="Σύντομη περιγραφή και βασικά συστατικά" />
         <label htmlFor="product-price">Τιμή (€)</label>
         <input id="product-price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} required placeholder="π.χ. 8,90" />
+        <label htmlFor="product-allergens">Αλλεργιογόνα</label>
+        <input id="product-allergens" value={allergensText} onChange={(event) => setAllergensText(event.target.value)} maxLength={300} placeholder="π.χ. γλουτένη, γάλα, ξηροί καρποί" />
         <button className="primary-button" type="submit" disabled={saving}>{saving ? "Αποθήκευση…" : "Προσθήκη προϊόντος"}</button>
       </form>
-      <p className="tiny-note">Οι τιμές αποθηκεύονται σε λεπτά του ευρώ. Τα αλλεργιογόνα πρέπει να συμπληρώνονται και να ελέγχονται πριν από δημόσια διάθεση· η ειδική διαχείρισή τους θα προστεθεί στο επόμενο βήμα.</p>
+      <p className="tiny-note">Οι τιμές αποθηκεύονται σε λεπτά του ευρώ. Τα αλλεργιογόνα καταχωρούνται ως διαχωρισμένη λίστα και πρέπει να επαληθεύονται από το κατάστημα πριν από τη δημόσια διάθεση.</p>
     </section> : null}
   </div>;
 }
