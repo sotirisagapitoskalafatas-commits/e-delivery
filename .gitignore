@@ -1,0 +1,14 @@
+node_modules
+.pnpm-store
+.next
+.expo
+dist
+build
+coverage
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+android
+ios
