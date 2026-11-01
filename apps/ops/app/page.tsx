@@ -5,8 +5,8 @@ const categories = [
   { title: "Φαγητό", sub: "Εστιατόρια, καφέ και φούρνοι", icon: "🍔", href: "/explore?category=food", tone: "red" },
   { title: "Supermarket", sub: "Τα καθημερινά σου, εύκολα", icon: "🛒", href: "/explore?category=groceries", tone: "yellow" },
   { title: "Καταστήματα", sub: "Αγορές από την περιοχή σου", icon: "🛍️", href: "/explore?category=shops", tone: "cream" },
-  { title: "Express", sub: "Τοπικές αποστολές", icon: "🛵", href: "/courier", tone: "dark" },
-  { title: "Υπηρεσίες", sub: "Τοπικοί επαγγελματίες", icon: "🧰", href: "/explore?category=shops", tone: "cream" }
+  { title: "Express", sub: "Τοπικές αποστολές", icon: "🛵", href: null, tone: "dark", soon: true },
+  { title: "Υπηρεσίες", sub: "Τοπικοί επαγγελματίες", icon: "🧰", href: null, tone: "cream", soon: true }
 ];
 
 export default function HomePage() {
@@ -43,7 +43,7 @@ export default function HomePage() {
     </section>
     <section className="category-section">
       <div className="section-heading"><div><span className="section-eyebrow">ΔΙΑΛΕΞΕ ΤΙ ΧΡΕΙΑΖΕΣΑΙ</span><h2>Η γειτονιά σου, <span>πιο κοντά.</span></h2></div><Link href="/explore" className="text-link">Όλες οι επιχειρήσεις <span>→</span></Link></div>
-      <div className="category-grid">{categories.map((item) => <Link className={`category-card ${item.tone}`} href={item.href} key={item.title}><span className="category-icon">{item.icon}</span><span className="category-title">{item.title}</span><span className="category-subtitle">{item.sub}</span><span className="category-arrow">↗</span></Link>)}</div>
+      <div className="category-grid">{categories.map((item) => item.href ? <Link className={`category-card ${item.tone}`} href={item.href} key={item.title}><span className="category-icon">{item.icon}</span><span className="category-title">{item.title}</span><span className="category-subtitle">{item.sub}</span><span className="category-arrow">↗</span></Link> : <article className={`category-card ${item.tone} coming-soon`} key={item.title} aria-disabled="true"><span className="category-icon">{item.icon}</span><span className="category-title">{item.title}</span><span className="category-subtitle">{item.sub}</span><span className="coming-soon-label">Σύντομα</span></article>)}</div>
       <p className="availability-note">Οι επιχειρήσεις εμφανίζονται ανάλογα με την ενεργή κάλυψη της περιοχής σου.</p>
     </section>
     <section className="how-section" id="how-it-works">

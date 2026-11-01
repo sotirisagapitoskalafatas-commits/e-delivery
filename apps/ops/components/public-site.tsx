@@ -4,7 +4,7 @@ export function SiteHeader() {
   return <header className="site-header">
     <Link className="site-brand" href="/" aria-label="E-DELIVERY αρχική"><span className="site-brand-symbol">e</span><span>e-delivery</span></Link>
     <nav className="site-nav" aria-label="Κύρια πλοήγηση">
-      <Link href="/explore?category=food">Φαγητό</Link><Link href="/explore?category=groceries">Supermarket</Link><Link href="/explore?category=shops">Καταστήματα</Link><a href="#how-it-works">Πώς λειτουργεί</a>
+      <Link href="/explore?category=food">Φαγητό</Link><Link href="/explore?category=groceries">Supermarket</Link><Link href="/explore?category=shops">Καταστήματα</Link><Link href="/#how-it-works">Πώς λειτουργεί</Link>
     </nav>
     <div className="site-header-actions"><Link className="site-partner-link" href="/merchant">Για συνεργάτες</Link><Link className="site-login-link" href="/login">Σύνδεση</Link><Link className="site-primary small" href="/register">Εγγραφή</Link></div>
   </header>;
