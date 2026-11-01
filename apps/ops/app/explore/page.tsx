@@ -18,6 +18,7 @@ type StoreRow = {
 };
 
 type SortOption = "recommended" | "delivery" | "preparation" | "minimum";
+type MenuCategoryRow = { id: string; store_id: string; name: string };
 
 const categoryTypes: Record<string, string[]> = {
   food: ["restaurant", "cafe", "bakery"],
@@ -86,6 +87,7 @@ function queryHref(params: {
   postalCode?: string | undefined;
   sort?: SortOption | undefined;
   freeDelivery?: boolean | undefined;
+  menuCategory?: string | undefined;
 }) {
   const query = new URLSearchParams();
   if (params.category && params.category !== "all") query.set("category", params.category);
@@ -95,6 +97,7 @@ function queryHref(params: {
   if (params.postalCode) query.set("postal_code", params.postalCode);
   if (params.sort && params.sort !== "recommended") query.set("sort", params.sort);
   if (params.freeDelivery) query.set("free_delivery", "1");
+  if (params.menuCategory) query.set("menu_category", params.menuCategory);
   const encoded = query.toString();
   return encoded ? `/explore?${encoded}` : "/explore";
 }
@@ -112,6 +115,7 @@ export default async function ExplorePage({
     postal_code?: string;
     sort?: string;
     free_delivery?: string;
+    menu_category?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -125,23 +129,40 @@ export default async function ExplorePage({
     ? params.sort as SortOption
     : "recommended";
   const freeDeliveryOnly = params.free_delivery === "1";
+  const requestedMenuCategory = (params.menu_category ?? "").trim().slice(0, 80);
 
   const supabase = await createSupabaseServerClient();
   let stores: StoreRow[] = [];
+  let menuCategories: MenuCategoryRow[] = [];
   let loadError = false;
 
   if (supabase) {
-    const { data, error } = await supabase.from("stores")
-      .select("id,name,description,city,region,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,service_postal_codes,logo_image_path,cover_image_path")
-      .eq("is_active", true)
-      .eq("accepts_orders", true)
-      .order("name")
-      .limit(200);
-    loadError = Boolean(error);
-    stores = (data ?? []) as StoreRow[];
+    const [storeResult, categoryResult] = await Promise.all([
+      supabase.from("stores")
+        .select("id,name,description,city,region,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,service_postal_codes,logo_image_path,cover_image_path")
+        .eq("is_active", true)
+        .eq("accepts_orders", true)
+        .order("name")
+        .limit(200),
+      supabase.from("categories")
+        .select("id,store_id,name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .limit(1000)
+    ]);
+    loadError = Boolean(storeResult.error);
+    stores = (storeResult.data ?? []) as StoreRow[];
+    if (!categoryResult.error) menuCategories = (categoryResult.data ?? []) as MenuCategoryRow[];
   } else {
     loadError = true;
   }
+
+  const activeMenuCategoryNames = Array.from(new Set(
+    menuCategories.map((item) => item.name.trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, "el"));
+  const selectedMenuCategory = activeMenuCategoryNames.find((name) =>
+    name.localeCompare(requestedMenuCategory, "el", { sensitivity: "base" }) === 0
+  ) ?? "";
 
   const visible = stores.filter((store) => {
     const matchesType = selectedType
@@ -151,7 +172,8 @@ export default async function ExplorePage({
     const matchesSearch = !query || searchable.includes(query);
     const matchesPostalCode = !postalCode || store.service_postal_codes?.includes(postalCode);
     const matchesFreeDelivery = !freeDeliveryOnly || store.base_delivery_fee_cents === 0;
-    return matchesType && matchesSearch && matchesPostalCode && matchesFreeDelivery;
+    const matchesMenuCategory = !selectedMenuCategory || menuCategories.some((item) => item.store_id === store.id && item.name.localeCompare(selectedMenuCategory, "el", { sensitivity: "base" }) === 0);
+    return matchesType && matchesSearch && matchesPostalCode && matchesFreeDelivery && matchesMenuCategory;
   });
 
   const sorted = [...visible].sort((a, b) => {
@@ -167,7 +189,7 @@ export default async function ExplorePage({
       ? Object.keys(typeNames)
       : (categoryTypes[category] ?? []);
   const heading = selectedType ? typeNames[selectedType] : categoryNames[category];
-  const sharedQuery = { category, q: params.q?.trim(), address, postalCode, sort, freeDelivery: freeDeliveryOnly };
+  const sharedQuery = { category, q: params.q?.trim(), address, postalCode, sort, freeDelivery: freeDeliveryOnly, menuCategory: selectedMenuCategory };
 
   return (
     <main className="public-page market-public-page">
@@ -180,6 +202,7 @@ export default async function ExplorePage({
           <p>Δες τι μπορεί να παραδοθεί στην περιοχή σου από καταστήματα που εξυπηρετούν πραγματικά τον ταχυδρομικό σου κώδικα.</p>
           <form className="explore-search" action="/explore" method="get">
             {selectedType ? <input type="hidden" name="type" value={selectedType} /> : <input type="hidden" name="category" value={category} />}
+            {selectedMenuCategory ? <input type="hidden" name="menu_category" value={selectedMenuCategory} /> : null}
             <label className="explore-address-field">
               <span>Διεύθυνση παράδοσης</span>
               <input name="address" defaultValue={address} maxLength={120} placeholder="Οδός και αριθμός" aria-label="Διεύθυνση παράδοσης" />
@@ -242,6 +265,18 @@ export default async function ExplorePage({
           </div>
         </div>
 
+        {activeMenuCategoryNames.length > 0 ? <section className="explore-menu-category-section">
+          <div className="explore-subcategories-heading"><div><span className="section-eyebrow">ΑΝΑΛΟΓΑ ΜΕ ΤΟΝ ΚΑΤΑΛΟΓΟ</span><h2>Κουζίνες & κατηγορίες</h2></div></div>
+          <div className="explore-menu-category-chips">
+            <Link className={!selectedMenuCategory ? "menu-category-chip active" : "menu-category-chip"} href={queryHref({ ...sharedQuery, menuCategory: undefined })}>Όλα</Link>
+            {activeMenuCategoryNames.map((name) => {
+              const count = new Set(menuCategories.filter((item) => item.name.localeCompare(name, "el", { sensitivity: "base" }) === 0 && stores.some((store) => store.id === item.store_id && (!postalCode || store.service_postal_codes?.includes(postalCode)))).map((item) => item.store_id)).size;
+              if (!count) return null;
+              return <Link key={name} className={selectedMenuCategory === name ? "menu-category-chip active" : "menu-category-chip"} href={queryHref({ ...sharedQuery, menuCategory: selectedMenuCategory === name ? undefined : name })}>{name}<span>{count}</span></Link>;
+            })}
+          </div>
+        </section> : null}
+
         <div className="explore-toolbar">
           <div className="explore-toolbar-copy">
             <span className="section-eyebrow">{heading}</span>
@@ -253,6 +288,7 @@ export default async function ExplorePage({
             <input type="hidden" name="address" value={address} />
             <input type="hidden" name="postal_code" value={postalCode} />
             <input type="hidden" name="q" value={params.q ?? ""} />
+            {selectedMenuCategory ? <input type="hidden" name="menu_category" value={selectedMenuCategory} /> : null}
             <label>
               <span>Ταξινόμηση</span>
               <select name="sort" defaultValue={sort}>
