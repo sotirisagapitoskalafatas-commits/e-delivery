@@ -140,7 +140,6 @@ export default async function HomePage() {
     catalogError = true;
   }
 
-  const availableTypes = new Set(stores.map((store) => store.store_type));
   const visibleCategories = categoryLinks;
   const storeIds = new Set(stores.map((store) => store.id));
   const additionalNewStores = newStores.filter((store) => !storeIds.has(store.id));
@@ -214,6 +213,18 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <section className="market-section market-categories-section">
+        <div className="market-section-heading">
+          <div><span className="market-section-kicker">ΑΝΑΚΑΛΥΨΕ</span><h2>Για τι έχεις όρεξη <span>σήμερα;</span></h2></div>
+          <Link href="/explore" className="market-text-link">Όλες οι κατηγορίες <span>→</span></Link>
+        </div>
+        {visibleCategories.length > 0 ? (
+          <div className="market-category-grid">{visibleCategories.map((item) => <Link key={item.type} href={`/explore?type=${item.type}`} className={`market-category-tile ${item.tone}`}><span className="market-category-icon"><MarketplaceIcon type={item.type} /></span><strong>{item.label}</strong><small>{item.detail}</small><i>↗</i></Link>)}</div>
+        ) : (
+          <div className="market-category-empty">Οι κατηγορίες θα ενεργοποιηθούν μαζί με τα πρώτα διαθέσιμα καταστήματα.</div>
+        )}
+      </section>
+
       <section className="market-section market-partners-section">
         <div className="market-section-heading">
           <div><span className="market-section-kicker">ΣΥΝΕΡΓΑΖΟΜΕΝΑ ΚΑΤΑΣΤΗΜΑΤΑ</span><h2>Βρες το επόμενο <span>αγαπημένο σου.</span></h2></div>
@@ -248,18 +259,6 @@ export default async function HomePage() {
           <div><strong>Ετοιμάζουμε τις πρώτες προσφορές.</strong><p>Σύντομα θα ανακαλύπτεις ειδικές τιμές και επιλογές από τα καταστήματα της περιοχής σου.</p></div>
           <Link href="/explore" className="market-text-link">Ανακάλυψε καταστήματα <span>→</span></Link>
         </div>
-      </section>
-
-      <section className="market-section market-categories-section">
-        <div className="market-section-heading">
-          <div><span className="market-section-kicker">ΑΝΑΚΑΛΥΨΕ</span><h2>Για τι έχεις όρεξη <span>σήμερα;</span></h2></div>
-          <Link href="/explore" className="market-text-link">Όλες οι κατηγορίες <span>→</span></Link>
-        </div>
-        {visibleCategories.length > 0 ? (
-          <div className="market-category-grid">{visibleCategories.map((item) => <Link key={item.type} href={`/explore?type=${item.type}`} className={`market-category-tile ${item.tone}`}><span className="market-category-icon"><MarketplaceIcon type={item.type} /></span><strong>{item.label}</strong><small>{item.detail}</small><i>↗</i></Link>)}</div>
-        ) : (
-          <div className="market-category-empty">Οι κατηγορίες θα ενεργοποιηθούν μαζί με τα πρώτα διαθέσιμα καταστήματα.</div>
-        )}
       </section>
 
       <section className="market-section market-how-section" id="how-it-works">
