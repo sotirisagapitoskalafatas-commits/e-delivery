@@ -1,0 +1,15 @@
+{
+  "name": "greek-delivery-platform",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "dev:ops": "pnpm --filter @delivery/ops dev",
+    "dev:customer": "pnpm --filter @delivery/customer start",
+    "dev:courier": "pnpm --filter @delivery/courier start",
+    "test": "pnpm --filter @delivery/domain test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build:ops": "pnpm --filter @delivery/ops build"
+  },
+  "devDependencies": { "typescript": "5.9.3" }
+}
