@@ -65,6 +65,12 @@ export default function App() {
     if (authError) setError("Η σύνδεση απέτυχε. Έλεγξε τα στοιχεία σου.");
   }
 
+  async function signOut() {
+    const client = supabase;
+    if (!client) return;
+    await client.auth.signOut();
+  }
+
   async function act(assignmentId: string, action: "accept" | "picked_up" | "delivered") {
     if (!supabase) return;
     setBusy(true);
@@ -93,7 +99,7 @@ export default function App() {
   return <SafeAreaView style={styles.safe}>
     <View style={styles.header}>
       <View><Text style={styles.brand}>e-delivery / COURIER</Text><Text style={styles.title}>Οι διαδρομές μου</Text></View>
-      <Pressable onPress={() => supabase.auth.signOut()}><Text style={styles.link}>Έξοδος</Text></Pressable>
+      <Pressable onPress={() => { void signOut(); }}><Text style={styles.link}>Έξοδος</Text></Pressable>
     </View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <FlatList
