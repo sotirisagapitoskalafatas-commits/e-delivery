@@ -12,7 +12,7 @@ No item is marked Complete yet. Production credentials, provider contracts, RLS 
 |---:|---|---|---|
 | 1 | Registration and account management | Partial | Email signup/sign-in exists; add phone/OTP, verification, recovery, profile editing, deletion and consent records. |
 | 2 | Address and location selection | Partial | Saved address create/select exists; add map pin, geocoding, validation, multiple labels and coverage feedback. |
-| 3 | Restaurant and local-shop discovery | Partial | Basic active-store list exists; add all categories, search, filters, ranking, distance, opening status and zone discovery. |
+| 3 | Restaurant and local-shop discovery | Partial | Food/grocery/shop category filters, search and postcode-based service filtering now exist; add ranking, distance, opening status, geo search and discovery acceptance tests. |
 | 4 | Menus, products and modifiers | Partial | Product list and basic add/hide/delete exist; add editing, option groups, modifiers, images, stock and verified food/allergen fields. |
 | 5 | Cart and checkout | Partial | Basic basket and server-priced COD checkout exist; add modifier pricing, full fee/discount validation, quote expiry and cancellation rules. |
 | 6 | Payment integration | Not started | Contract a marketplace PSP; implement payment intents, signed webhooks, idempotency, refunds and reconciliation. COD is not card integration. |
