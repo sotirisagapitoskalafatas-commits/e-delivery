@@ -23,7 +23,7 @@ jobs:
                       offenders.append(f"{path}:{line_number}: malformed dollar-quote delimiter")
 
           if offenders:
-              print("\\n".join(offenders))
+              print(*offenders, sep=chr(10))
               sys.exit(1)
           print("SQL function delimiters: OK")
           PY
