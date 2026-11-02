@@ -48,6 +48,7 @@ In Supabase SQL Editor, create a new query for each migration, paste the complet
 7. [007 — Merchant media and storage policies](../supabase/migrations/202611020007_merchant_media.sql)
 8. [008 — Weekly merchant opening hours](../supabase/migrations/202611020008_store_hours.sql)
 9. [009 — Private customer store favourites](../supabase/migrations/202611020009_customer_favorites.sql)
+10. [010 — Private customer support tickets and conversations](../supabase/migrations/202611020010_support_tickets.sql)
 
 Do not paste all seven files into one SQL Editor execution. In particular, migration 002 must commit before migration 003 uses the enum value it adds.
 
@@ -110,6 +111,20 @@ select
 ```
 
 The table must exist and RLS must be `true`. Favorites must only be readable, insertable and deletable by the matching signed-in customer.
+
+After migration 010, verify support tables, RLS and the support helper:
+
+```sql
+select
+  to_regclass('public.support_tickets') as support_tickets_table,
+  to_regclass('public.support_ticket_messages') as support_messages_table,
+  coalesce((select relrowsecurity from pg_class where oid = 'public.support_tickets'::regclass), false) as tickets_rls,
+  coalesce((select relrowsecurity from pg_class where oid = 'public.support_ticket_messages'::regclass), false) as messages_rls,
+  to_regprocedure('private.is_support_staff()') as support_role_helper,
+  to_regprocedure('public.create_support_ticket(uuid,text,text,text)') as ticket_create_rpc;
+```
+
+Both tables must exist with RLS enabled, and both functions must resolve. Test with two separate customer accounts that each can only see their own ticket/messages, plus one `support` account that can only operate through the protected support inbox.
 
 ## 5. Finish with real-account verification
 
