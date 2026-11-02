@@ -20,18 +20,23 @@ function createEmptySchedule(): DaySchedule[] {
   return Array.from({ length: 7 }, () => ({ isClosed: true, slots: [{ opens_at: "09:00", closes_at: "17:00" }] }));
 }
 function timeMinutes(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
+  const timeParts = value.split(":");
+  const hours = Number(timeParts[0]);
+  const minutes = Number(timeParts[1]);
   return hours * 60 + minutes;
 }
 function slotsOverlap(slots: ScheduleSlot[]) {
-  const ranges = slots.map((slot) => {
+  type TimeRange = [number, number];
+  const ranges: TimeRange[][] = slots.map((slot) => {
     const start = timeMinutes(slot.opens_at);
     const end = timeMinutes(slot.closes_at);
     return end > start ? [[start, end]] : [[start, 1440], [0, end]];
   });
   for (let i = 0; i < ranges.length; i += 1) {
     for (let j = i + 1; j < ranges.length; j += 1) {
-      if (ranges[i].some(([a, b]) => ranges[j].some(([x, y]) => a < y && x < b))) return true;
+      const first = ranges[i] ?? [];
+      const second = ranges[j] ?? [];
+      if (first.some(([a, b]) => second.some(([x, y]) => a < y && x < b))) return true;
     }
   }
   return false;
@@ -130,11 +135,12 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
     const grouped: Record<number, Record<number, ScheduleSlot>> = {};
     for (const row of (data ?? []) as StoreHourRow[]) {
       if (row.is_closed || !row.opens_at || !row.closes_at) continue;
-      grouped[row.weekday] ??= {};
-      grouped[row.weekday][row.slot_order] = {
+      const daySlots = grouped[row.weekday] ?? {};
+      daySlots[row.slot_order] = {
         opens_at: row.opens_at.slice(0, 5),
         closes_at: row.closes_at.slice(0, 5)
       };
+      grouped[row.weekday] = daySlots;
     }
     const next = Array.from({ length: 7 }, (_, weekday) => {
       const slots = [grouped[weekday]?.[0], grouped[weekday]?.[1]].filter((slot): slot is ScheduleSlot => Boolean(slot));
