@@ -3,7 +3,32 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Sa
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./src/supabase";
 
-type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; prep_time_minutes: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[]; logo_image_path: string | null; cover_image_path: string | null };
+type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; prep_time_minutes: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[]; logo_image_path: string | null; cover_image_path: string | null; timezone?: string; open_status?: "open" | "closed" | "unknown" };
+type StoreHoursRow = { store_id: string; weekday: number; opens_at: string | null; closes_at: string | null; is_closed: boolean };
+
+function storeOpenStatus(storeId: string, timezone: string | undefined, rows: StoreHoursRow[]): "open" | "closed" | "unknown" {
+  const storeRows = rows.filter((row) => row.store_id === storeId);
+  if (storeRows.length < 14) return "unknown";
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Europe/Athens", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
+    const weekdays: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const today = weekdays[parts.weekday];
+    if (today === undefined) return "unknown";
+    const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+    const previousDay = (today + 6) % 7;
+    const toMinutes = (value: string) => { const [hours, minutes] = value.slice(0, 5).split(":").map(Number); return hours * 60 + minutes; };
+    const open = storeRows.some((row) => {
+      if (row.is_closed || !row.opens_at || !row.closes_at) return false;
+      const start = toMinutes(row.opens_at);
+      const end = toMinutes(row.closes_at);
+      if (end > start) return row.weekday === today && nowMinutes >= start && nowMinutes < end;
+      return (row.weekday === today && nowMinutes >= start) || (row.weekday === previousDay && nowMinutes < end);
+    });
+    return open ? "open" : "closed";
+  } catch {
+    return "unknown";
+  }
+}
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
@@ -112,16 +137,28 @@ export default function App() {
     if (!supabase) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
       supabase.from("categories").select("id,store_id,name").eq("is_active", true).order("sort_order").limit(1000)
-    ]).then(([storeResult, serviceResult, categoryResult]) => {
+    ]).then(async ([storeResult, serviceResult, categoryResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
-      else setStores((storeResult.data ?? []) as Store[]);
       if (serviceResult.error) setError("Δεν ήταν δυνατή η φόρτωση υπηρεσιών της περιοχής.");
-      else setServiceProviders((serviceResult.data ?? []) as Store[]);
       if (!categoryResult.error) setMenuCategories((categoryResult.data ?? []) as MenuCategoryRow[]);
+      const storeRows = (storeResult.data ?? []) as Store[];
+      const serviceRows = (serviceResult.data ?? []) as Store[];
+      const storeIds = Array.from(new Set([...storeRows, ...serviceRows].map((store) => store.id)));
+      let hours: StoreHoursRow[] = [];
+      if (storeIds.length) {
+        const { data: hoursRows, error: hoursError } = await supabase.from("store_hours")
+          .select("store_id,weekday,opens_at,closes_at,is_closed")
+          .in("store_id", storeIds)
+          .limit(3000);
+        if (!hoursError) hours = (hoursRows ?? []) as StoreHoursRow[];
+      }
+      if (!active) return;
+      if (!storeResult.error) setStores(storeRows.map((store) => ({ ...store, open_status: storeOpenStatus(store.id, store.timezone, hours) })));
+      if (!serviceResult.error) setServiceProviders(serviceRows.map((store) => ({ ...store, open_status: storeOpenStatus(store.id, store.timezone, hours) })));
     });
     return () => { active = false; };
   }, []);
@@ -649,7 +686,7 @@ export default function App() {
         </View>
         {sortedStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση.</Text></View> : sortedStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
           <Image source={{ uri: storePhoto(item) }} style={styles.storePhoto} accessibilityLabel={item.cover_image_path ? `Φωτογραφία ${item.name}` : `Ενδεικτική φωτογραφία κατηγορίας για ${item.name}`} />
-          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text>{item.open_status === "open" ? <Text style={styles.storeOpenStatus}>Ανοιχτό τώρα</Text> : item.open_status === "closed" ? <Text style={styles.storeClosedStatus}>Κλειστό τώρα</Text> : null}<Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
           <Text style={styles.arrow}>›</Text>
         </Pressable>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
@@ -771,6 +808,8 @@ const styles = StyleSheet.create({
   logout: { color: "#E31E24", fontWeight: "700", fontSize: 12 },
   sectionTitle: { marginTop: 16, color: "#192943", fontSize: 17, fontWeight: "800" },
   store: { flexDirection: "row", alignItems: "center", gap: 14, padding: 15, borderRadius: 17, backgroundColor: "white", borderWidth: 1, borderColor: "#E9EDF4" },
+  storeOpenStatus: { color: "#16784F", fontSize: 10, fontWeight: "900", marginTop: 4 },
+  storeClosedStatus: { color: "#77808D", fontSize: 10, fontWeight: "800", marginTop: 4 },
   storeIcon: { width: 52, height: 52, borderRadius: 15, backgroundColor: "#FFF3C8", alignItems: "center", justifyContent: "center" },
   storeEmoji: { fontSize: 24 }, storeName: { fontWeight: "800", color: "#182740", fontSize: 15 }, arrow: { fontSize: 28, color: "#9BA8BA" },
   product: { flexDirection: "row", alignItems: "center", paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: "#E8ECF2", gap: 12 },
