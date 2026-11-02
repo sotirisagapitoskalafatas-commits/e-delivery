@@ -12,11 +12,18 @@ function storeOpenStatus(storeId: string, timezone: string | undefined, rows: St
   try {
     const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone || "Europe/Athens", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
     const weekdays: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const today = weekdays[parts.weekday];
+    const weekdayLabel = parts.weekday;
+    if (!weekdayLabel || !(weekdayLabel in weekdays)) return "unknown";
+    const today = weekdays[weekdayLabel];
     if (today === undefined) return "unknown";
     const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
     const previousDay = (today + 6) % 7;
-    const toMinutes = (value: string) => { const [hours, minutes] = value.slice(0, 5).split(":").map(Number); return hours * 60 + minutes; };
+    const toMinutes = (value: string) => {
+      const timeParts = value.slice(0, 5).split(":");
+      const hours = Number(timeParts[0]);
+      const minutes = Number(timeParts[1]);
+      return hours * 60 + minutes;
+    };
     const open = storeRows.some((row) => {
       if (row.is_closed || !row.opens_at || !row.closes_at) return false;
       const start = toMinutes(row.opens_at);
@@ -134,12 +141,13 @@ export default function App() {
 
   // Public discovery is available before sign-in. Private account data is loaded separately.
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
-      supabase.from("categories").select("id,store_id,name").eq("is_active", true).order("sort_order").limit(1000)
+      client.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
+      client.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
+      client.from("categories").select("id,store_id,name").eq("is_active", true).order("sort_order").limit(1000)
     ]).then(async ([storeResult, serviceResult, categoryResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
@@ -150,7 +158,7 @@ export default function App() {
       const storeIds = Array.from(new Set([...storeRows, ...serviceRows].map((store) => store.id)));
       let hours: StoreHoursRow[] = [];
       if (storeIds.length) {
-        const { data: hoursRows, error: hoursError } = await supabase.from("store_hours")
+        const { data: hoursRows, error: hoursError } = await client.from("store_hours")
           .select("store_id,weekday,opens_at,closes_at,is_closed")
           .in("store_id", storeIds)
           .limit(3000);
