@@ -147,8 +147,13 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       return { isClosed: slots.length === 0, slots: slots.length ? slots : [{ opens_at: "09:00", closes_at: "17:00" }] };
     });
     setSchedule(next);
-    setHoursConfigured((data ?? []).length > 0);
-    setHoursMessage((data ?? []).length ? "Το εβδομαδιαίο ωράριο έχει φορτωθεί." : "Δεν έχει καταχωρηθεί ωράριο. Το κατάστημα θα εμφανίζεται χωρίς ένδειξη ανοιχτού/κλειστού.");
+    const rowCount = (data ?? []).length;
+    setHoursConfigured(rowCount === 14);
+    setHoursMessage(rowCount === 0
+      ? "Δεν έχει καταχωρηθεί ωράριο. Το κατάστημα θα εμφανίζεται χωρίς ένδειξη ανοιχτού/κλειστού."
+      : rowCount === 14
+        ? "Το εβδομαδιαίο ωράριο έχει φορτωθεί."
+        : "Το ωράριο είναι ελλιπές. Αποθήκευσε ξανά και τις επτά ημέρες για σωστές ενδείξεις.");
   }
 
   function updateScheduleSlot(weekday: number, slotIndex: number, field: keyof ScheduleSlot, value: string) {
