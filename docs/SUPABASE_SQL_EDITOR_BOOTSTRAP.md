@@ -49,6 +49,7 @@ In Supabase SQL Editor, create a new query for each migration, paste the complet
 8. [008 — Weekly merchant opening hours](../supabase/migrations/202611020008_store_hours.sql)
 9. [009 — Private customer store favourites](../supabase/migrations/202611020009_customer_favorites.sql)
 10. [010 — Private customer support tickets and conversations](../supabase/migrations/202611020010_support_tickets.sql)
+11. [011 — Support ticket activity timestamp permission](../supabase/migrations/202611020011_support_ticket_updated_at_grant.sql)
 
 Do not paste all seven files into one SQL Editor execution. In particular, migration 002 must commit before migration 003 uses the enum value it adds.
 
@@ -121,10 +122,11 @@ select
   coalesce((select relrowsecurity from pg_class where oid = 'public.support_tickets'::regclass), false) as tickets_rls,
   coalesce((select relrowsecurity from pg_class where oid = 'public.support_ticket_messages'::regclass), false) as messages_rls,
   to_regprocedure('private.is_support_staff()') as support_role_helper,
-  to_regprocedure('public.create_support_ticket(uuid,text,text,text)') as ticket_create_rpc;
+  to_regprocedure('public.create_support_ticket(uuid,text,text,text)') as ticket_create_rpc,
+  has_column_privilege('authenticated', 'public.support_tickets', 'updated_at', 'UPDATE') as support_can_refresh_activity;
 ```
 
-Both tables must exist with RLS enabled, and both functions must resolve. Test with two separate customer accounts that each can only see their own ticket/messages, plus one `support` account that can only operate through the protected support inbox.
+Both tables must exist with RLS enabled, both functions must resolve, and `support_can_refresh_activity` must be `true`. Test with two separate customer accounts that each can only see their own ticket/messages, plus one `support` account that can only operate through the protected support inbox.
 
 ## 5. Finish with real-account verification
 
