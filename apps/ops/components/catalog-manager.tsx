@@ -191,7 +191,7 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
         return;
       }
       for (const slot of day.slots) {
-        if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(slot.opens_at) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(slot.closes_at) || slot.opens_at === slot.closes_at) {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.opens_at) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.closes_at) || slot.opens_at === slot.closes_at) {
           setHoursMessage("Συμπλήρωσε έγκυρες ώρες έναρξης και λήξης. Ίδιες ώρες δεν αποτελούν έγκυρο διάστημα.");
           return;
         }
