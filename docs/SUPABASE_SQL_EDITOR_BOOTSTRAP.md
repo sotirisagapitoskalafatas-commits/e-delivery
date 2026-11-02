@@ -47,6 +47,7 @@ In Supabase SQL Editor, create a new query for each migration, paste the complet
 6. [006 — Partner application RPC server-only permissions](../supabase/migrations/202611020006_partner_application_rpc_server_only.sql)
 7. [007 — Merchant media and storage policies](../supabase/migrations/202611020007_merchant_media.sql)
 8. [008 — Weekly merchant opening hours](../supabase/migrations/202611020008_store_hours.sql)
+9. [009 — Private customer store favourites](../supabase/migrations/202611020009_customer_favorites.sql)
 
 Do not paste all seven files into one SQL Editor execution. In particular, migration 002 must commit before migration 003 uses the enum value it adds.
 
@@ -95,6 +96,20 @@ order by store_id;
 ```
 
 A fully saved weekly schedule contains 14 rows per store (seven weekdays and two slots per day). A store with no rows has not configured its hours and must not be labelled open or closed.
+
+After migration 009, verify that the private favorites table and its row-level security are enabled:
+
+```sql
+select
+  to_regclass('public.customer_favorites') as customer_favorites_table,
+  coalesce((
+    select relrowsecurity
+    from pg_class
+    where oid = 'public.customer_favorites'::regclass
+  ), false) as row_level_security_enabled;
+```
+
+The table must exist and RLS must be `true`. Favorites must only be readable, insertable and deletable by the matching signed-in customer.
 
 ## 5. Finish with real-account verification
 
