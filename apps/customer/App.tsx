@@ -1,22 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./src/supabase";
 
-type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[] };
+type Store = { id: string; name: string; description: string | null; city: string; store_type: string; minimum_order_cents: number; base_delivery_fee_cents: number; prep_time_minutes: number; platform_delivery_enabled: boolean; merchant_delivery_enabled: boolean; independent_delivery_enabled: boolean; service_postal_codes: string[]; logo_image_path: string | null; cover_image_path: string | null };
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
-type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[] };
+type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[]; image_path: string | null };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
+type MenuCategoryRow = { id: string; store_id: string; name: string };
 type StoreCategory = "all" | "food" | "groceries" | "shops";
 type HomeScreen = "stores" | "orders" | "services" | "express";
 
+const MEDIA_BUCKET = "e-delivery-merchant-media";
+const categoryPhotos: Record<string, string> = {
+  restaurant: "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=900&q=80",
+  cafe: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80",
+  bakery: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=900&q=80",
+  supermarket: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80",
+  convenience: "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=900&q=80",
+  pharmacy: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=900&q=80",
+  flower_shop: "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=900&q=80",
+  pet_shop: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=900&q=80",
+  retail: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=900&q=80"
+};
+function mediaUrl(path: string | null) {
+  if (!supabase || !path) return null;
+  return supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+function storePhoto(store: Store) {
+  return mediaUrl(store.cover_image_path) ?? categoryPhotos[store.store_type] ?? categoryPhotos.retail;
+}
 const euro = (cents: number) => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,6 +62,13 @@ export default function App() {
   const [screen, setScreen] = useState<HomeScreen>("stores");
   const [category, setCategory] = useState<StoreCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchPostalCode, setSearchPostalCode] = useState("");
+  const [searchAddress, setSearchAddress] = useState("");
+  const [storeTypeFilter, setStoreTypeFilter] = useState("");
+  const [storeSort, setStoreSort] = useState<"recommended" | "delivery" | "preparation" | "minimum">("recommended");
+  const [freeDeliveryOnly, setFreeDeliveryOnly] = useState(false);
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("");
+  const [menuCategories, setMenuCategories] = useState<MenuCategoryRow[]>([]);
   const [serviceTitle, setServiceTitle] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
   const [serviceSubmitting, setServiceSubmitting] = useState(false);
@@ -62,32 +90,69 @@ export default function App() {
   useEffect(() => {
     if (!supabase) { setReady(true); return; }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next);
+      if (next) { setShowAuth(false); setError(""); }
+      else {
+        setScreen("stores");
+        setStore(null);
+        setServiceProvider(null);
+        setCart({});
+        setAddresses([]);
+        setAddressId("");
+        setSearchAddress("");
+        setSearchPostalCode("");
+      }
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Public discovery is available before sign-in. Private account data is loaded separately.
   useEffect(() => {
-    if (!session || !supabase) return;
+    if (!supabase) return;
     let active = true;
     Promise.all([
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
-      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
-      supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
-      supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
-      supabase.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
-      supabase.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30)
-    ]).then(([storeResult, serviceResult, addressResult, orderResult, expressResult, bookingResult]) => {
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("accepts_orders", true).order("name").limit(100),
+      supabase.from("stores").select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path").eq("is_active", true).eq("store_type", "service_provider").order("name").limit(60),
+      supabase.from("categories").select("id,store_id,name").eq("is_active", true).order("sort_order").limit(1000)
+    ]).then(([storeResult, serviceResult, categoryResult]) => {
       if (!active) return;
       if (storeResult.error) setError("Δεν ήταν δυνατή η φόρτωση καταστημάτων.");
       else setStores((storeResult.data ?? []) as Store[]);
       if (serviceResult.error) setError("Δεν ήταν δυνατή η φόρτωση υπηρεσιών της περιοχής.");
       else setServiceProviders((serviceResult.data ?? []) as Store[]);
+      if (!categoryResult.error) setMenuCategories((categoryResult.data ?? []) as MenuCategoryRow[]);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    if (!session) {
+      setAddresses([]);
+      setAddressId("");
+      setOrders([]);
+      setExpressRequests([]);
+      setServiceRequests([]);
+      return;
+    }
+
+    let active = true;
+    Promise.all([
+      supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
+      supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
+      supabase.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
+      supabase.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30)
+    ]).then(([addressResult, orderResult, expressResult, bookingResult]) => {
+      if (!active) return;
       if (addressResult.error) setError("Δεν ήταν δυνατή η φόρτωση διευθύνσεων.");
       else {
         const rows = (addressResult.data ?? []) as Address[];
         setAddresses(rows);
         if (rows[0]) {
-          setAddressId(rows[0].id);
+          setAddressId((current) => current || rows[0]!.id);
+          setSearchPostalCode((current) => current || rows[0]!.postal_code);
+          setSearchAddress((current) => current || `${rows[0]!.line1}, ${rows[0]!.city}`);
           setPickupAddressId((current) => current || rows[0]!.id);
           setDropoffAddressId((current) => current || rows[1]?.id || rows[0]!.id);
         }
@@ -105,7 +170,7 @@ export default function App() {
   useEffect(() => {
     if (!store || !supabase) { setProducts([]); return; }
     let active = true;
-    supabase.from("products").select("id,name,description,price_cents,currency,is_available,allergens").eq("store_id", store.id).eq("is_available", true).order("name").limit(100).then(({ data, error: queryError }) => {
+    supabase.from("products").select("id,name,description,price_cents,currency,is_available,allergens,image_path").eq("store_id", store.id).eq("is_available", true).order("name").limit(100).then(({ data, error: queryError }) => {
       if (!active) return;
       if (queryError) setError("Δεν ήταν δυνατή η φόρτωση του καταλόγου.");
       else setProducts((data ?? []) as Product[]);
@@ -117,6 +182,7 @@ export default function App() {
   const count = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
   const cartSignature = JSON.stringify(Object.entries(cart).sort(([a], [b]) => a.localeCompare(b)));
   const selectedAddress = addresses.find((address) => address.id === addressId);
+  const activePostalCode = searchPostalCode.length === 5 ? searchPostalCode : selectedAddress?.postal_code ?? "";
   const deliveryFeeCents = store?.base_delivery_fee_cents ?? 0;
   const totalCents = subtotal + deliveryFeeCents;
 
@@ -141,20 +207,45 @@ export default function App() {
     if (store) setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
   }, [store?.id, addressId, cartSignature, fulfillmentMethod]);
   const storeTypesByCategory: Record<StoreCategory, string[]> = {
-    all: ["restaurant", "cafe", "bakery", "supermarket", "convenience", "retail", "pharmacy", "flower_shop", "pet_shop", "other"],
+    all: ["restaurant", "cafe", "bakery", "supermarket", "convenience", "retail", "pharmacy", "flower_shop", "pet_shop", "parcel_point", "other"],
     food: ["restaurant", "cafe", "bakery"],
     groceries: ["supermarket", "convenience"],
-    shops: ["retail", "pharmacy", "flower_shop", "pet_shop", "other"]
+    shops: ["retail", "pharmacy", "flower_shop", "pet_shop", "parcel_point", "service_provider", "other"]
+  };
+  const storeTypeLabels: Record<string, string> = {
+    restaurant: "Εστιατόρια", cafe: "Καφέδες", bakery: "Αρτοποιεία",
+    supermarket: "Supermarket", convenience: "Mini market", retail: "Καταστήματα",
+    pharmacy: "Φαρμακεία", flower_shop: "Ανθοπωλεία", pet_shop: "Pet shops",
+    parcel_point: "Αποστολές", service_provider: "Υπηρεσίες", other: "Λοιπά"
   };
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase("el-GR");
   const visibleStores = stores.filter((candidate) => {
-    const inCoverage = !selectedAddress || candidate.service_postal_codes.includes(selectedAddress.postal_code);
+    const inCoverage = !activePostalCode || candidate.service_postal_codes.includes(activePostalCode);
     const inCategory = storeTypesByCategory[category].includes(candidate.store_type);
+    const matchesType = !storeTypeFilter || candidate.store_type === storeTypeFilter;
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
-    return inCoverage && inCategory && matchesSearch;
+    const matchesFreeDelivery = !freeDeliveryOnly || candidate.base_delivery_fee_cents === 0;
+    const matchesMenuCategory = !menuCategoryFilter || menuCategories.some((item) => item.store_id === candidate.id && item.name.localeCompare(menuCategoryFilter, "el", { sensitivity: "base" }) === 0);
+    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery && matchesMenuCategory;
   });
+  const sortedStores = [...visibleStores].sort((a, b) => {
+    if (storeSort === "delivery") return a.base_delivery_fee_cents - b.base_delivery_fee_cents || a.name.localeCompare(b.name, "el");
+    if (storeSort === "preparation") return a.prep_time_minutes - b.prep_time_minutes || a.name.localeCompare(b.name, "el");
+    if (storeSort === "minimum") return a.minimum_order_cents - b.minimum_order_cents || a.name.localeCompare(b.name, "el");
+    return a.name.localeCompare(b.name, "el");
+  });
+  const availableTypeFilters = storeTypesByCategory[category].filter((type) =>
+    stores.some((store) => store.store_type === type && (!activePostalCode || store.service_postal_codes.includes(activePostalCode)))
+  );
+  const storesInCurrentArea = new Set(stores.filter((store) =>
+    storeTypesByCategory[category].includes(store.store_type) &&
+    (!activePostalCode || store.service_postal_codes.includes(activePostalCode))
+  ).map((store) => store.id));
+  const menuCategoryOptions = Array.from(new Set(
+    menuCategories.filter((item) => storesInCurrentArea.has(item.store_id)).map((item) => item.name.trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, "el"));
   const visibleServices = serviceProviders.filter((candidate) => {
-    const inCoverage = !selectedAddress || candidate.service_postal_codes.includes(selectedAddress.postal_code);
+    const inCoverage = !activePostalCode || candidate.service_postal_codes.includes(activePostalCode);
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
     return inCoverage && matchesSearch;
   });
@@ -191,6 +282,8 @@ export default function App() {
     const row = data as Address;
     setAddresses((current) => [row, ...current]);
     setAddressId(row.id);
+    setSearchAddress(`${row.line1}, ${row.city}`);
+    setSearchPostalCode(row.postal_code);
     setLine1("");
     setPostalCode("");
     setError("");
@@ -204,7 +297,8 @@ export default function App() {
 
   async function submitServiceRequest() {
     const client = supabase;
-    if (!client || !session || !serviceProvider || !selectedAddress) {
+    if (!session) { setShowAuth(true); setError("Συνδέσου για να στείλεις αίτημα υπηρεσίας."); return; }
+    if (!client || !serviceProvider || !selectedAddress) {
       setError("Επίλεξε πάροχο και διεύθυνση εξυπηρέτησης.");
       return;
     }
@@ -245,6 +339,7 @@ export default function App() {
 
   async function submitExpressRequest() {
     const client = supabase;
+    if (!session) { setShowAuth(true); setError("Συνδέσου για να υποβάλεις αίτημα express."); return; }
     if (!client) return;
     if (!pickupAddressId || !dropoffAddressId || pickupAddressId === dropoffAddressId) {
       setError("Επίλεξε δύο διαφορετικές αποθηκευμένες διευθύνσεις για παραλαβή και παράδοση.");
@@ -285,6 +380,7 @@ export default function App() {
   }
 
   async function placeOrder() {
+    if (!session) { setShowAuth(true); setError("Συνδέσου για να επιλέξεις διεύθυνση και να ολοκληρώσεις την παραγγελία."); return; }
     if (!supabase || !store || !selectedAddress || count === 0) {
       setError("Επίλεξε διεύθυνση και τουλάχιστον ένα προϊόν.");
       return;
@@ -315,25 +411,26 @@ export default function App() {
   if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#E31E24" /></SafeAreaView>;
   if (!supabase) return <SafeAreaView style={styles.center}><Text style={styles.title}>E-DELIVERY</Text><Text style={styles.muted}>Ρύθμισε τα EXPO_PUBLIC_SUPABASE variables.</Text></SafeAreaView>;
 
-  if (!session) return <SafeAreaView style={styles.safe}><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}>
-    <Text style={styles.brand}>e-delivery</Text><Text style={styles.title}>Ό,τι χρειάζεσαι, κοντά σου.</Text><Text style={styles.muted}>Συνδέσου για να ανακαλύψεις καταστήματα στην περιοχή σου.</Text>
-    <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder="Email" value={email} onChangeText={setEmail} />
-    <TextInput style={styles.input} secureTextEntry placeholder="Κωδικός" value={password} onChangeText={setPassword} />
-    {error ? <Text style={styles.error}>{error}</Text> : null}
-    <Pressable style={styles.primary} onPress={signIn} disabled={busy}><Text style={styles.primaryText}>{busy ? "Σύνδεση…" : "Σύνδεση"}</Text></Pressable>
-    <Pressable style={styles.secondary} onPress={signUp} disabled={busy}><Text style={styles.secondaryText}>Δημιουργία λογαριασμού</Text></Pressable>
-  </KeyboardAvoidingView></SafeAreaView>;
+  if (!session && showAuth) return <SafeAreaView style={styles.safe}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.authWrap}>
+      <Pressable onPress={() => { setShowAuth(false); setError(""); }}><Text style={styles.back}>‹ Πίσω στην αγορά</Text></Pressable>
+      <Text style={styles.brand}>E-DELIVERY</Text>
+      <Text style={styles.title}>Συνέχισε τις αγορές σου.</Text>
+      <Text style={styles.muted}>Συνδέσου ή δημιούργησε λογαριασμό για να αποθηκεύσεις διευθύνσεις και να ολοκληρώσεις παραγγελίες.</Text>
+      <TextInput style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder="Email" value={email} onChangeText={setEmail} />
+      <TextInput style={styles.input} secureTextEntry placeholder="Κωδικός" value={password} onChangeText={setPassword} />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable style={styles.primary} onPress={signIn} disabled={busy}><Text style={styles.primaryText}>{busy ? "Σύνδεση…" : "Σύνδεση"}</Text></Pressable>
+      <Pressable style={styles.secondary} onPress={signUp} disabled={busy}><Text style={styles.secondaryText}>Δημιουργία λογαριασμού</Text></Pressable>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
 
   return <SafeAreaView style={styles.safe}>
     <View style={styles.header}>
-      <View><Text style={styles.brand}>e-delivery</Text><Text style={styles.mutedSmall}>Η γειτονιά σου, σε ένα app</Text></View>
-      <View style={styles.headerActions}>
-        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("stores"); }}><Text style={screen === "stores" ? styles.navSelected : styles.navLink}>Ανακάλυψη</Text></Pressable>
-        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("express"); }}><Text style={screen === "express" ? styles.navSelected : styles.navLink}>Express</Text></Pressable>
-        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("services"); }}><Text style={screen === "services" ? styles.navSelected : styles.navLink}>Υπηρεσίες</Text></Pressable>
-        <Pressable onPress={() => { setStore(null); setServiceProvider(null); setScreen("orders"); void loadOrders(); }}><Text style={screen === "orders" ? styles.navSelected : styles.navLink}>Παραγγελίες ({orders.length})</Text></Pressable>
-        <Pressable onPress={() => { void signOut(); }}><Text style={styles.logout}>Έξοδος</Text></Pressable>
-      </View>
+      <View><Text style={styles.brand}>E-DELIVERY</Text><Text style={styles.mutedSmall}>Η γειτονιά σου, σε ένα app</Text></View>
+      <Pressable onPress={() => session ? void signOut() : setShowAuth(true)} style={styles.headerAccountButton}>
+        <Text style={styles.headerAccountText}>{session ? "Έξοδος" : "Σύνδεση"}</Text>
+      </Pressable>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
       {confirmation ? <View style={styles.confirm}><Text style={styles.confirmTitle}>Η παραγγελία καταχωρήθηκε</Text><Text style={styles.muted}>Κωδικός: {confirmation}</Text><Text style={styles.muted}>Πληρωμή: μετρητά κατά την παράδοση.</Text><Pressable onPress={() => setConfirmation("")}><Text style={styles.link}>Συνέχεια αγορών</Text></Pressable></View> : null}
@@ -403,14 +500,21 @@ export default function App() {
         {store.platform_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "platform" && styles.addressSelected]} onPress={() => setFulfillmentMethod("platform")}><Text style={styles.productName}>Διανομέας πλατφόρμας</Text><Text style={styles.mutedSmall}>Παράδοση από το δίκτυο διανομέων της πλατφόρμας</Text></Pressable> : null}
         {store.merchant_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "merchant" && styles.addressSelected]} onPress={() => setFulfillmentMethod("merchant")}><Text style={styles.productName}>Διανομή καταστήματος</Text><Text style={styles.mutedSmall}>Παράδοση από τον συνεργαζόμενο έμπορο</Text></Pressable> : null}
         {store.independent_delivery_enabled ? <Pressable style={[styles.address, fulfillmentMethod === "independent" && styles.addressSelected]} onPress={() => setFulfillmentMethod("independent")}><Text style={styles.productName}>Ανεξάρτητος συνεργάτης delivery</Text><Text style={styles.mutedSmall}>Παράδοση από εγκεκριμένο συνεργαζόμενο δίκτυο</Text></Pressable> : null}
+        <Image source={{ uri: storePhoto(store) }} style={styles.storeHeroImage} accessibilityLabel={`Φωτογραφία εξωφύλλου ή κατηγορίας ${store.name}`} />
         <Text style={styles.sectionTitle}>Μενού</Text>
-        {products.map((product) => <View key={product.id} style={styles.product}><View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.mutedSmall}>{product.description ?? ""}</Text><Text style={styles.price}>{euro(product.price_cents)}</Text>{product.allergens.length ? <Text style={styles.mutedSmall}>Αλλεργιογόνα: {product.allergens.join(", ")}</Text> : null}</View><Pressable style={styles.addButton} onPress={() => setCart((current) => ({ ...current, [product.id]: (current[product.id] ?? 0) + 1 }))}><Text style={styles.addText}>+ Προσθήκη</Text></Pressable></View>)}
+        {products.map((product) => <View key={product.id} style={styles.product}>{product.image_path ? <Image source={{ uri: mediaUrl(product.image_path) ?? "" }} style={styles.productPhoto} accessibilityLabel={`Φωτογραφία ${product.name}`} /> : <View style={styles.productPhotoPlaceholder}><Text style={styles.productPhotoMark}>✳</Text></View>}<View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.mutedSmall}>{product.description ?? ""}</Text><Text style={styles.price}>{euro(product.price_cents)}</Text>{product.allergens.length ? <Text style={styles.mutedSmall}>Αλλεργιογόνα: {product.allergens.join(", ")}</Text> : null}</View><Pressable style={styles.addButton} onPress={() => setCart((current) => ({ ...current, [product.id]: (current[product.id] ?? 0) + 1 }))}><Text style={styles.addText}>+ Προσθήκη</Text></Pressable></View>)}
         <Text style={styles.sectionTitle}>Διεύθυνση παράδοσης</Text>
-        {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
-        <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
-        <TextInput style={styles.input} placeholder="Οδός και αριθμός" value={line1} onChangeText={setLine1} />
-        <View style={styles.row}><TextInput style={[styles.input, styles.half]} placeholder="Πόλη" value={city} onChangeText={setCity} /><TextInput style={[styles.input, styles.half]} placeholder="Τ.Κ." keyboardType="number-pad" value={postalCode} onChangeText={setPostalCode} /></View>
-        <Pressable style={styles.secondary} onPress={saveAddress} disabled={busy}><Text style={styles.secondaryText}>Αποθήκευση διεύθυνσης</Text></Pressable>
+        {session ? <>
+          {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+          <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
+          <TextInput style={styles.input} placeholder="Οδός και αριθμός" value={line1} onChangeText={setLine1} />
+          <View style={styles.row}><TextInput style={[styles.input, styles.half]} placeholder="Πόλη" value={city} onChangeText={setCity} /><TextInput style={[styles.input, styles.half]} placeholder="Τ.Κ." keyboardType="number-pad" value={postalCode} onChangeText={setPostalCode} /></View>
+          <Pressable style={styles.secondary} onPress={saveAddress} disabled={busy}><Text style={styles.secondaryText}>Αποθήκευση διεύθυνσης</Text></Pressable>
+        </> : <View style={styles.noticeCard}>
+          <Text style={styles.productName}>Σύνδεση πριν από την παράδοση</Text>
+          <Text style={styles.mutedSmall}>Πρόσθεσε τη διεύθυνσή σου όταν είσαι έτοιμος να ολοκληρώσεις την παραγγελία.</Text>
+          <Pressable onPress={() => setShowAuth(true)}><Text style={styles.link}>Σύνδεση ή εγγραφή →</Text></Pressable>
+        </View>}
         <View style={styles.cart}>
           <Text style={styles.sectionTitle}>Καλάθι · {count} προϊόντα</Text>
           <View style={styles.priceRow}><Text style={styles.mutedSmall}>Υποσύνολο</Text><Text style={styles.priceLine}>{euro(subtotal)}</Text></View>
@@ -421,22 +525,164 @@ export default function App() {
           <Pressable style={styles.primary} onPress={placeOrder} disabled={placing || count === 0 || subtotal < store.minimum_order_cents}><Text style={styles.primaryText}>{placing ? "Καταχώρηση…" : "Επιβεβαίωση παραγγελίας"}</Text></Pressable>
         </View>
       </> : <>
-        <View style={styles.hero}><Text style={styles.eyebrow}>GREECE · LOCAL DELIVERY</Text><Text style={styles.heroTitle}>Ό,τι χρειάζεσαι,{"\n"}κοντά σου.</Text><Text style={styles.muted}>Ανακάλυψε καταστήματα και τοπικές επιχειρήσεις που εξυπηρετούν την επιλεγμένη διεύθυνσή σου.</Text></View>
-        <TextInput style={styles.input} placeholder="Αναζήτηση καταστημάτων και προϊόντων" value={searchQuery} onChangeText={setSearchQuery} />
-        <View style={styles.categoryRow}>
-          {([{ id: "all", label: "Όλα" }, { id: "food", label: "Φαγητό" }, { id: "groceries", label: "Supermarket" }, { id: "shops", label: "Καταστήματα" }] as const).map((item) => <Pressable key={item.id} style={[styles.categoryChip, category === item.id && styles.categoryChipSelected]} onPress={() => setCategory(item.id)}><Text style={category === item.id ? styles.categoryTextSelected : styles.categoryText}>{item.label}</Text></Pressable>)}
+        <View style={styles.photoHero}>
+          <Image source={{ uri: categoryPhotos.restaurant }} style={styles.photoHeroImage} />
+          <View style={styles.photoHeroShade} />
+          <View style={styles.photoHeroCopy}>
+            <Text style={styles.photoHeroEyebrow}>E-DELIVERY · ΤΟΠΙΚΗ ΑΓΟΡΑ</Text>
+            <Text style={styles.photoHeroTitle}>Ό,τι χρειάζεσαι,{"\n"}κοντά σου.</Text>
+            <Text style={styles.photoHeroDescription}>Φαγητό, καφές και καθημερινές αγορές από επιχειρήσεις που εξυπηρετούν την περιοχή σου.</Text>
+          </View>
         </View>
-        <Text style={styles.sectionTitle}>Διαθέσιμα κοντά σου</Text>
-        {!selectedAddress ? <Text style={styles.mutedSmall}>Πρόσθεσε διεύθυνση για να δεις ποιες επιχειρήσεις εξυπηρετούν την περιοχή σου.</Text> : null}
-        {visibleStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν υπάρχουν διαθέσιμες επιχειρήσεις για αυτή τη διεύθυνση</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο όταν έχει επιβεβαιωθεί η κάλυψη και η δυνατότητα εξυπηρέτησης.</Text></View> : visibleStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>{["restaurant","cafe"].includes(item.store_type) ? "🍽" : item.store_type === "bakery" ? "🥐" : ["supermarket","convenience"].includes(item.store_type) ? "🛒" : item.store_type === "pharmacy" ? "💊" : item.store_type === "flower_shop" ? "💐" : item.store_type === "pet_shop" ? "🐾" : "🛍"}</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Ελάχιστη {euro(item.minimum_order_cents)} · Παράδοση {euro(item.base_delivery_fee_cents)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
+
+        <View style={styles.addressPrompt}>
+          <View style={styles.addressPromptHeading}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressPromptKicker}>ΠΟΥ ΘΕΛΕΙΣ ΝΑ ΠΑΡΑΔΟΘΕΙ;</Text>
+              <Text style={styles.addressPromptTitle}>Βάλε τη διεύθυνσή σου</Text>
+            </View>
+            {selectedAddress ? <Text style={styles.savedAddressBadge}>Αποθηκευμένη</Text> : null}
+          </View>
+          <TextInput style={styles.addressPromptInput} placeholder="Οδός και αριθμός" value={searchAddress} onChangeText={(value) => { setSearchAddress(value); if (selectedAddress && value.trim() !== `${selectedAddress.line1}, ${selectedAddress.city}`) setAddressId(""); }} />
+          <TextInput
+            style={styles.addressPromptInput}
+            placeholder="Ταχυδρομικός κώδικας · 5 ψηφία"
+            value={searchPostalCode}
+            onChangeText={(value) => {
+              const next = value.replace(/\D/g, "").slice(0, 5);
+              setSearchPostalCode(next);
+              if (selectedAddress && selectedAddress.postal_code !== next) setAddressId("");
+              setStoreTypeFilter("");
+              setMenuCategoryFilter("");
+            }}
+            keyboardType="number-pad"
+            maxLength={5}
+          />
+          <Text style={styles.addressPromptHint}>Η κάλυψη παράδοσης ελέγχεται με βάση τον Τ.Κ. Η οδός δεν αποθηκεύεται μέχρι να επιλέξεις αποθήκευση διεύθυνσης.</Text>
+          {session && addresses.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedAddressRow}>
+            {addresses.slice(0, 5).map((address) => <Pressable key={address.id} style={[styles.savedAddressChip, addressId === address.id && styles.savedAddressChipActive]} onPress={() => {
+              setAddressId(address.id);
+              setSearchPostalCode(address.postal_code);
+              setSearchAddress(`${address.line1}, ${address.city}`);
+              setStoreTypeFilter("");
+            }}>
+              <Text style={addressId === address.id ? styles.savedAddressChipTextActive : styles.savedAddressChipText}>{address.label}</Text>
+            </Pressable>)}
+          </ScrollView> : null}
+        </View>
+
+        <TextInput style={styles.input} placeholder="Αναζήτηση καταστήματος ή προϊόντος" value={searchQuery} onChangeText={setSearchQuery} />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.marketTabsRow}>
+          {([
+            { id: "food" as const, label: "Φαγητό & καφές", image: categoryPhotos.restaurant },
+            { id: "groceries" as const, label: "Supermarket", image: categoryPhotos.supermarket },
+            { id: "shops" as const, label: "Καταστήματα", image: categoryPhotos.retail }
+          ]).map((item) => <Pressable key={item.id} style={[styles.marketPhotoTab, category === item.id && styles.marketPhotoTabActive]} onPress={() => { setCategory(item.id); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}>
+            <Image source={{ uri: item.image }} style={styles.marketPhotoTabImage} />
+            <View style={styles.marketPhotoTabShade} />
+            <Text style={styles.marketPhotoTabLabel}>{item.label}</Text>
+          </Pressable>)}
+        </ScrollView>
+
+        <View style={styles.categoryRow}>
+          <Pressable style={[styles.categoryChip, category === "all" && styles.categoryChipSelected]} onPress={() => { setCategory("all"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "all" ? styles.categoryTextSelected : styles.categoryText}>Όλα</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "food" && styles.categoryChipSelected]} onPress={() => { setCategory("food"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "food" ? styles.categoryTextSelected : styles.categoryText}>Φαγητό</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "groceries" && styles.categoryChipSelected]} onPress={() => { setCategory("groceries"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "groceries" ? styles.categoryTextSelected : styles.categoryText}>Supermarket</Text></Pressable>
+          <Pressable style={[styles.categoryChip, category === "shops" && styles.categoryChipSelected]} onPress={() => { setCategory("shops"); setStoreTypeFilter(""); setMenuCategoryFilter(""); }}><Text style={category === "shops" ? styles.categoryTextSelected : styles.categoryText}>Καταστήματα</Text></Pressable>
+        </View>
+
+        <Text style={styles.sectionTitle}>Κατηγορίες</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeFiltersRow}>
+          {availableTypeFilters.map((type) => {
+            const countForType = stores.filter((candidate) => candidate.store_type === type && (!activePostalCode || candidate.service_postal_codes.includes(activePostalCode))).length;
+            return <Pressable key={type} style={[styles.typeFilterChip, storeTypeFilter === type && styles.typeFilterChipActive]} onPress={() => setStoreTypeFilter((current) => current === type ? "" : type)}>
+              <Text style={storeTypeFilter === type ? styles.typeFilterTextActive : styles.typeFilterText}>{storeTypeLabels[type] ?? type}</Text>
+              <Text style={storeTypeFilter === type ? styles.typeFilterCountActive : styles.typeFilterCount}>{countForType}</Text>
+            </Pressable>;
+          })}
+        </ScrollView>
+
+        {menuCategoryOptions.length > 0 ? <>
+          <Text style={styles.sectionTitle}>Κουζίνες & κατηγορίες καταλόγου</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeFiltersRow}>
+            <Pressable style={[styles.typeFilterChip, !menuCategoryFilter && styles.typeFilterChipActive]} onPress={() => setMenuCategoryFilter("")}>
+              <Text style={!menuCategoryFilter ? styles.typeFilterTextActive : styles.typeFilterText}>Όλες</Text>
+            </Pressable>
+            {menuCategoryOptions.map((name) => {
+              const count = new Set(menuCategories.filter((item) =>
+                item.name.localeCompare(name, "el", { sensitivity: "base" }) === 0 && storesInCurrentArea.has(item.store_id)
+              ).map((item) => item.store_id)).size;
+              return <Pressable key={name} style={[styles.typeFilterChip, menuCategoryFilter === name && styles.typeFilterChipActive]} onPress={() => setMenuCategoryFilter((current) => current === name ? "" : name)}>
+                <Text style={menuCategoryFilter === name ? styles.typeFilterTextActive : styles.typeFilterText}>{name}</Text>
+                <Text style={menuCategoryFilter === name ? styles.typeFilterCountActive : styles.typeFilterCount}>{count}</Text>
+              </Pressable>;
+            })}
+          </ScrollView>
+        </> : null}
+
+        <View style={styles.discoveryHeading}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionTitle}>{activePostalCode ? `Καταστήματα που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Ανακάλυψε καταστήματα"}</Text>
+            <Text style={styles.mutedSmall}>{activePostalCode ? `Επιλογές που εξυπηρετούν τον Τ.Κ. ${activePostalCode}` : "Συμπλήρωσε τον Τ.Κ. για να επιβεβαιώσεις την κάλυψη."}</Text>
+          </View>
+          <Text style={styles.resultCount}>{sortedStores.length}</Text>
+        </View>
+
+        <View style={styles.marketFilterPanel}>
+          <Text style={styles.filterPanelTitle}>Ταξινόμηση & φίλτρα</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChipsRow}>
+            {([
+              { id: "recommended" as const, label: "Προκαθορισμένο" },
+              { id: "delivery" as const, label: "Delivery" },
+              { id: "preparation" as const, label: "Χρόνος" },
+              { id: "minimum" as const, label: "Ελάχιστη" }
+            ]).map((item) => <Pressable key={item.id} style={[styles.sortChip, storeSort === item.id && styles.sortChipActive]} onPress={() => setStoreSort(item.id)}>
+              <Text style={storeSort === item.id ? styles.sortChipTextActive : styles.sortChipText}>{item.label}</Text>
+            </Pressable>)}
+          </ScrollView>
+          <Pressable style={[styles.freeDeliveryChip, freeDeliveryOnly && styles.freeDeliveryChipActive]} onPress={() => setFreeDeliveryOnly((current) => !current)}>
+            <Text style={styles.freeDeliveryCheck}>{freeDeliveryOnly ? "✓" : "○"}</Text>
+            <Text style={freeDeliveryOnly ? styles.freeDeliveryTextActive : styles.freeDeliveryText}>Δωρεάν delivery</Text>
+          </Pressable>
+          {freeDeliveryOnly && sortedStores.length === 0 ? <Text style={styles.mutedSmall}>Δεν βρέθηκαν καταστήματα με μηδενικό βασικό κόστος παράδοσης για τα τρέχοντα φίλτρα.</Text> : null}
+        </View>
+        {sortedStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση.</Text></View> : sortedStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
+          <Image source={{ uri: storePhoto(item) }} style={styles.storePhoto} accessibilityLabel={item.cover_image_path ? `Φωτογραφία ${item.name}` : `Ενδεικτική φωτογραφία κατηγορίας για ${item.name}`} />
+          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text><Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
+          <Text style={styles.arrow}>›</Text>
+        </Pressable>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
-        {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => setAddressId(address.id)}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
-        <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
-        <TextInput style={styles.input} placeholder="Οδός και αριθμός" value={line1} onChangeText={setLine1} />
-        <View style={styles.row}><TextInput style={[styles.input, styles.half]} placeholder="Πόλη" value={city} onChangeText={setCity} /><TextInput style={[styles.input, styles.half]} placeholder="Τ.Κ." keyboardType="number-pad" value={postalCode} onChangeText={setPostalCode} /></View>
-        <Pressable style={styles.secondary} onPress={saveAddress} disabled={busy}><Text style={styles.secondaryText}>Αποθήκευση διεύθυνσης</Text></Pressable>
+        {session ? <>
+          {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => { setAddressId(address.id); setSearchPostalCode(address.postal_code); setSearchAddress(`${address.line1}, ${address.city}`); }}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
+          <TextInput style={styles.input} placeholder="Ετικέτα (π.χ. Σπίτι)" value={label} onChangeText={setLabel} />
+          <TextInput style={styles.input} placeholder="Οδός και αριθμός" value={line1} onChangeText={setLine1} />
+          <View style={styles.row}><TextInput style={[styles.input, styles.half]} placeholder="Πόλη" value={city} onChangeText={setCity} /><TextInput style={[styles.input, styles.half]} placeholder="Τ.Κ." keyboardType="number-pad" value={postalCode} onChangeText={setPostalCode} /></View>
+          <Pressable style={styles.secondary} onPress={saveAddress} disabled={busy}><Text style={styles.secondaryText}>Αποθήκευση διεύθυνσης</Text></Pressable>
+        </> : <View style={styles.noticeCard}>
+          <Text style={styles.productName}>Αγόρασε χωρίς να συνδεθείς πρώτα.</Text>
+          <Text style={styles.mutedSmall}>Περιηγήσου στα καταστήματα και επίλεξε προϊόντα. Θα χρειαστείς λογαριασμό και διεύθυνση μόνο πριν ολοκληρώσεις παραγγελία.</Text>
+          <Pressable onPress={() => setShowAuth(true)}><Text style={styles.link}>Σύνδεση ή εγγραφή →</Text></Pressable>
+        </View>}
       </>}
     </ScrollView>
+    {!store ? <View style={styles.bottomNav}>
+      {([
+        { id: "stores" as const, label: "Ανακάλυψη", icon: "⌕" },
+        { id: "express" as const, label: "Express", icon: "↗" },
+        { id: "services" as const, label: "Υπηρεσίες", icon: "⌂" },
+        { id: "orders" as const, label: "Ιστορικό", icon: "▤" }
+      ]).map((item) => <Pressable key={item.id} style={styles.bottomTab} onPress={() => {
+        setStore(null); setServiceProvider(null);
+        if (!session && item.id !== "stores") { setShowAuth(true); setError("Συνδέσου για να χρησιμοποιήσεις αυτή τη λειτουργία."); return; }
+        setError("");
+        setScreen(item.id);
+        if (item.id === "orders") void loadOrders();
+      }}>
+        <Text style={screen === item.id ? styles.bottomTabIconSelected : styles.bottomTabIcon}>{item.icon}</Text>
+        <Text style={screen === item.id ? styles.bottomTabLabelSelected : styles.bottomTabLabel}>{item.label}</Text>
+      </Pressable>)}
+    </View> : null}
   </SafeAreaView>;
 }
 
@@ -446,6 +692,54 @@ const styles = StyleSheet.create({
   authWrap: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
   header: { paddingHorizontal: 22, paddingVertical: 14, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 9, flexWrap: "wrap", justifyContent: "flex-end" },
+  headerAccountButton: { paddingHorizontal: 14, paddingVertical: 9, backgroundColor: "#FFF0C4", borderRadius: 999 },
+  headerAccountText: { color: "#171717", fontSize: 11, fontWeight: "900" },
+  bottomNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingTop: 10, paddingBottom: 8, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#E9EDF2" },
+  bottomTab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingVertical: 2 },
+  bottomTabIcon: { color: "#929BA8", fontSize: 18 },
+  bottomTabIconSelected: { color: "#E31E24", fontSize: 18, fontWeight: "900" },
+  bottomTabLabel: { color: "#929BA8", fontSize: 9, fontWeight: "700" },
+  bottomTabLabelSelected: { color: "#E31E24", fontSize: 9, fontWeight: "900" },
+  addressPrompt: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E9EDF2", borderRadius: 18, padding: 16, gap: 9 },
+  addressPromptHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  addressPromptKicker: { color: "#9A7C48", fontSize: 8, fontWeight: "900", letterSpacing: 1.1 },
+  addressPromptTitle: { color: "#182740", fontSize: 19, fontWeight: "900", letterSpacing: -0.5, marginTop: 4 },
+  savedAddressBadge: { color: "#16784F", fontSize: 8, fontWeight: "800", backgroundColor: "#EAF8F0", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 99 },
+  addressPromptInput: { backgroundColor: "#F8F9FA", borderWidth: 1, borderColor: "#E8ECF2", borderRadius: 11, paddingHorizontal: 12, paddingVertical: 11, color: "#182740", fontSize: 12 },
+  addressPromptHint: { fontSize: 9, lineHeight: 14, color: "#929BA8" },
+  savedAddressRow: { flexDirection: "row", gap: 7, paddingVertical: 2 },
+  savedAddressChip: { backgroundColor: "#F3F5F7", borderWidth: 1, borderColor: "#E8ECF2", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99 },
+  savedAddressChipActive: { backgroundColor: "#FFF3C8", borderColor: "#FFC928" },
+  savedAddressChipText: { color: "#6F7A8A", fontWeight: "700", fontSize: 9 },
+  savedAddressChipTextActive: { color: "#171717", fontWeight: "900", fontSize: 9 },
+  marketTabsRow: { flexDirection: "row", gap: 9, paddingVertical: 2 },
+  marketPhotoTab: { width: 210, height: 112, borderRadius: 16, overflow: "hidden", justifyContent: "flex-end", padding: 13, backgroundColor: "#222" },
+  marketPhotoTabActive: { borderWidth: 2, borderColor: "#E31E24" },
+  marketPhotoTabImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
+  marketPhotoTabShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(10,10,10,0.38)" },
+  marketPhotoTabLabel: { color: "#FFFFFF", fontSize: 14, fontWeight: "900", textShadowColor: "rgba(0,0,0,.35)", textShadowRadius: 7 },
+  typeFiltersRow: { flexDirection: "row", gap: 7, paddingVertical: 4 },
+  typeFilterChip: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderColor: "#E5EAF2", backgroundColor: "#FFFFFF", borderRadius: 99, paddingHorizontal: 11, paddingVertical: 8 },
+  typeFilterChipActive: { backgroundColor: "#FFC928", borderColor: "#FFC928" },
+  typeFilterText: { color: "#667184", fontWeight: "700", fontSize: 9 },
+  typeFilterTextActive: { color: "#171717", fontWeight: "900", fontSize: 9 },
+  typeFilterCount: { color: "#929BA8", fontSize: 8 },
+  typeFilterCountActive: { color: "#171717", fontWeight: "900", fontSize: 8 },
+  marketFilterPanel: { padding: 13, borderRadius: 15, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E7EAF0", gap: 9 },
+  filterPanelTitle: { color: "#182740", fontSize: 11, fontWeight: "900" },
+  sortChipsRow: { flexDirection: "row", gap: 7 },
+  sortChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 99, backgroundColor: "#F4F5F7", borderWidth: 1, borderColor: "#E7EAF0" },
+  sortChipActive: { backgroundColor: "#FFF3C8", borderColor: "#FFC928" },
+  sortChipText: { color: "#758093", fontSize: 9, fontWeight: "700" },
+  sortChipTextActive: { color: "#171717", fontSize: 9, fontWeight: "900" },
+  freeDeliveryChip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 99, backgroundColor: "#F4F5F7", borderWidth: 1, borderColor: "#E7EAF0" },
+  freeDeliveryChipActive: { backgroundColor: "#EAF8F0", borderColor: "#A6DDC1" },
+  freeDeliveryCheck: { color: "#178052", fontSize: 12, fontWeight: "900" },
+  freeDeliveryText: { color: "#677285", fontSize: 9, fontWeight: "700" },
+  freeDeliveryTextActive: { color: "#176C49", fontSize: 9, fontWeight: "900" },
+  discoveryHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  resultCount: { width: 30, height: 30, borderRadius: 10, backgroundColor: "#FFF0C4", color: "#171717", textAlign: "center", textAlignVertical: "center", overflow: "hidden", fontSize: 12, fontWeight: "900" },
+  postcodeInput: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5EAF2", borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, color: "#14223B", marginTop: 8, width: "100%" },
   categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   categoryChip: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5EAF2", borderRadius: 999, paddingVertical: 9, paddingHorizontal: 13 },
   categoryChipSelected: { backgroundColor: "#FFC928", borderColor: "#FFC928" },
@@ -495,5 +789,17 @@ const styles = StyleSheet.create({
   orderStatus: { color: "#E31E24", fontWeight: "800", fontSize: 10, textTransform: "capitalize" },
   empty: { padding: 20, backgroundColor: "white", borderRadius: 14, gap: 6 },
   confirm: { padding: 18, backgroundColor: "#E9F8F0", borderRadius: 16, gap: 7 }, confirmTitle: { color: "#16784F", fontSize: 17, fontWeight: "900" },
-  link: { color: "#E31E24", fontWeight: "800", marginTop: 7 }
+  link: { color: "#E31E24", fontWeight: "800", marginTop: 7 },
+  storePhoto: { width: 92, height: 88, borderRadius: 13, backgroundColor: "#F0ECE8" },
+  storeHeroImage: { width: "100%", height: 176, borderRadius: 18, marginTop: 10, backgroundColor: "#F0ECE8" },
+  productPhoto: { width: 76, height: 76, borderRadius: 12, backgroundColor: "#F0ECE8" },
+  productPhotoPlaceholder: { width: 76, height: 76, borderRadius: 12, backgroundColor: "#FFF3C8", alignItems: "center", justifyContent: "center" },
+  productPhotoMark: { fontSize: 27, color: "#E31E24" },
+  photoHero: { padding: 22, borderRadius: 24, minHeight: 240, overflow: "hidden", justifyContent: "flex-end", gap: 8, marginBottom: 10 },
+  photoHeroImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 24 },
+  photoHeroShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(20,14,12,0.48)", borderRadius: 24 },
+  photoHeroCopy: { position: "relative", gap: 8 },
+  photoHeroEyebrow: { color: "#FFC928", fontSize: 10, fontWeight: "800", letterSpacing: 1.5 },
+  photoHeroTitle: { fontSize: 34, lineHeight: 38, fontWeight: "900", color: "white", letterSpacing: -1.4 },
+  photoHeroDescription: { color: "white", fontSize: 13, lineHeight: 20, maxWidth: 300 }
 });

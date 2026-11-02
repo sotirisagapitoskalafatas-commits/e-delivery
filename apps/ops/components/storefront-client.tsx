@@ -6,8 +6,15 @@ import {useRouter} from "next/navigation";
 import {createSupabaseBrowserClient} from "@/lib/supabase/browser";
 
 type StoreInfo={id:string;name:string;description:string|null;city:string;region:string;address_line:string;postal_code:string;store_type:string;minimum_order_cents:number;base_delivery_fee_cents:number;platform_delivery_enabled:boolean;merchant_delivery_enabled:boolean;independent_delivery_enabled:boolean;service_postal_codes:string[];prep_time_minutes:number};
-type Product={id:string;name:string;description:string|null;price_cents:number;currency:string;allergens:string[]};
+type Product={id:string;name:string;description:string|null;price_cents:number;currency:string;allergens:string[];image_path:string|null};
 type Address={id:string;label:string;line1:string;city:string;postal_code:string};
+const MEDIA_BUCKET="e-delivery-merchant-media";
+function publicMediaUrl(path:string|null){
+  const base=process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if(!base||!path)return null;
+  const root=base.endsWith("/")?base.slice(0,-1):base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
 const euro=(cents:number)=>new Intl.NumberFormat("el-GR",{style:"currency",currency:"EUR"}).format(cents/100);
 
 export function StorefrontClient({store}:{store:StoreInfo}){
@@ -24,7 +31,7 @@ export function StorefrontClient({store}:{store:StoreInfo}){
     let active=true;
     void(async()=>{
       const [productResult,authResult]=await Promise.all([
-        client.from("products").select("id,name,description,price_cents,currency,allergens").eq("store_id",store.id).eq("is_available",true).order("name"),
+        client.from("products").select("id,name,description,price_cents,currency,allergens,image_path").eq("store_id",store.id).eq("is_available",true).order("name"),
         client.auth.getUser()
       ]);
       if(!active)return;
@@ -80,7 +87,7 @@ export function StorefrontClient({store}:{store:StoreInfo}){
   return <section className="storefront-layout">
     <div className="storefront-menu"><div className="storefront-menu-heading"><div><span className="section-eyebrow">Ο ΚΑΤΑΛΟΓΟΣ</span><h2>Διάλεξε τα αγαπημένα σου.</h2></div><span className="menu-count">{products.length} προϊόντα</span></div>
       {loading?<div className="empty-catalog"><h3>Φόρτωση καταλόγου…</h3></div>:products.length===0?<div className="empty-catalog"><h3>Ο κατάλογος ενημερώνεται</h3><p>Δεν υπάρχουν αυτή τη στιγμή διαθέσιμα προϊόντα.</p></div>:
-      <div className="product-grid">{products.map(product=><article className="web-product-card" key={product.id}><div className="product-card-symbol">✳</div><div className="web-product-copy"><h3>{product.name}</h3><p>{product.description??" "}</p>{product.allergens.length?<small>Αλλεργιογόνα: {product.allergens.join(", ")}</small>:null}<strong>{euro(product.price_cents)}</strong></div><button className="quantity-add" type="button" onClick={()=>updateQuantity(product.id,1)} aria-label={`Προσθήκη ${product.name}`}>+</button>{(cart[product.id]??0)>0?<div className="quantity-control"><button type="button" onClick={()=>updateQuantity(product.id,-1)} aria-label="Αφαίρεση">−</button><b>{cart[product.id] ?? 0}</b><button type="button" onClick={()=>updateQuantity(product.id,1)} aria-label="Προσθήκη">+</button></div>:null}</article>)}</div>}
+      <div className="product-grid">{products.map(product=><article className="web-product-card" key={product.id}><div className="product-card-symbol">{publicMediaUrl(product.image_path)?<img src={publicMediaUrl(product.image_path)!} alt={`Φωτογραφία ${product.name}`}/>:<span>✳</span>}</div><div className="web-product-copy"><h3>{product.name}</h3><p>{product.description??" "}</p>{product.allergens.length?<small>Αλλεργιογόνα: {product.allergens.join(", ")}</small>:null}<strong>{euro(product.price_cents)}</strong></div><button className="quantity-add" type="button" onClick={()=>updateQuantity(product.id,1)} aria-label={`Προσθήκη ${product.name}`}>+</button>{(cart[product.id]??0)>0?<div className="quantity-control"><button type="button" onClick={()=>updateQuantity(product.id,-1)} aria-label="Αφαίρεση">−</button><b>{cart[product.id] ?? 0}</b><button type="button" onClick={()=>updateQuantity(product.id,1)} aria-label="Προσθήκη">+</button></div>:null}</article>)}</div>}
     </div>
     <aside className="web-cart"><span className="section-eyebrow">ΤΟ ΚΑΛΑΘΙ ΣΟΥ</span><h2>Η παραγγελία</h2>
       {itemCount===0?<div className="cart-empty">Το καλάθι σου είναι άδειο.<br/><small>Πρόσθεσε προϊόντα για να συνεχίσεις.</small></div>:products.filter(p=>cart[p.id]).map(p=><div className="cart-line" key={p.id}><span>{cart[p.id] ?? 0} × {p.name}</span><b>{euro(p.price_cents*(cart[p.id] ?? 0))}</b></div>)}

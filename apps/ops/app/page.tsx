@@ -13,6 +13,8 @@ type StoreRow = {
   base_delivery_fee_cents: number;
   prep_time_minutes: number;
   created_at: string;
+  logo_image_path: string | null;
+  cover_image_path: string | null;
 };
 
 const fallbackStoreKind = { label: "Τοπική επιχείρηση", icon: "🏪", tone: "retail" };
@@ -31,6 +33,25 @@ const storeKinds: Record<string, typeof fallbackStoreKind> = {
   other: fallbackStoreKind
 };
 
+const MEDIA_BUCKET = "e-delivery-merchant-media";
+const storePhotoByType: Record<string, string> = {
+  restaurant: "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1200&q=85",
+  cafe: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1200&q=85",
+  bakery: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=1200&q=85",
+  supermarket: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=85",
+  convenience: "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=1200&q=85",
+  flower_shop: "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=85",
+  pet_shop: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=1200&q=85",
+  retail: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=1200&q=85",
+  pharmacy: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=1200&q=85"
+};
+function publicMediaUrl(path: string | null | undefined) {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !path) return null;
+  const root = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;;
+}
+const categoryPhotos = storePhotoByType;
 const euro = (cents: number) =>
   new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
 
@@ -73,16 +94,18 @@ function MarketplaceIcon({ type, className }: { type: string; className?: string
 
 function StoreCard({ store, isNew = false }: { store: StoreRow; isNew?: boolean }) {
   const kind = storeKinds[store.store_type] ?? fallbackStoreKind;
+  const coverUrl = publicMediaUrl(store.cover_image_path) ?? storePhotoByType[store.store_type] ?? storePhotoByType.retail;
+  const logoUrl = publicMediaUrl(store.logo_image_path);
   return (
     <Link href={`/store/${store.id}`} className="market-store-card">
-      <div className={`market-store-art ${kind.tone} market-store-art--${store.store_type}`}>
+      <div className={`market-store-art ${kind.tone} market-store-art--${store.store_type}`} style={{ backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.03), rgba(0,0,0,.42)), url("${coverUrl}")` }}>
         <div className="market-store-art-top">
           <span className="market-store-kind">{kind.label}</span>
           {isNew ? <span className="market-new-badge">Νέο</span> : null}
         </div>
         <div className="market-store-art-center">
-          <span className="market-store-icon"><MarketplaceIcon type={store.store_type} /></span>
-          <span className="market-store-monogram">{store.name.trim().slice(0, 1).toLocaleUpperCase("el-GR")}</span>
+          <span className="market-store-icon">{logoUrl ? <img src={logoUrl} alt="" /> : <MarketplaceIcon type={store.store_type} />}</span>
+          {!store.cover_image_path ? <span className="market-photo-caption">ΕΝΔΕΙΚΤΙΚΗ ΦΩΤΟΓΡΑΦΙΑ</span> : null}
         </div>
         <span className="market-store-art-caption">E-DELIVERY · LOCAL PICKS</span>
       </div>
@@ -126,7 +149,7 @@ export default async function HomePage() {
   let catalogError = false;
 
   if (supabase) {
-    const selectFields = "id,name,description,store_type,city,region,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,created_at";
+    const selectFields = "id,name,description,store_type,city,region,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,created_at,logo_image_path,cover_image_path";
     const [storeResult, newStoreResult, countResult] = await Promise.all([
       supabase.from("stores").select(selectFields).eq("is_active", true).eq("accepts_orders", true).order("name").limit(18),
       supabase.from("stores").select(selectFields).eq("is_active", true).eq("accepts_orders", true).order("created_at", { ascending: false }).limit(6),
@@ -158,16 +181,16 @@ export default async function HomePage() {
               </span><br />στη γειτονιά σου.<br /><span>Όλα πιο κοντά.</span>
             </h1>
             <p>Φαγητό, καφές, ψώνια και καθημερινές αγορές από τοπικές επιχειρήσεις. Βάλε τον ταχυδρομικό σου κώδικα και δες τι εξυπηρετεί πραγματικά την περιοχή σου.</p>
-            <form className="market-search" action="/explore" method="get">
+<div className="market-address-intro"><span>ΠΟΥ ΘΕΛΕΙΣ ΝΑ ΠΑΡΑΔΟΘΕΙ;</span><strong>Βάλε τη διεύθυνσή σου</strong><small>Ελέγχουμε τη διαθεσιμότητα με βάση τον ταχυδρομικό κώδικα.</small></div>            <form className="market-search" action="/explore" method="get">
               <label className="market-search-field">
-                <span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.7"/><path d="m16 16 4.5 4.5"/></svg></span>
-                <input name="q" placeholder="Κατάστημα, προϊόν ή περιοχή" aria-label="Αναζήτηση καταστήματος, προϊόντος ή περιοχής" />
+                <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 10.2c0 5-7 10.2-7 10.2S5 15.2 5 10.2a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.2"/></svg></span>
+                <input name="address" maxLength={120} placeholder="Οδός και αριθμός (προαιρετικό)" aria-label="Διεύθυνση παράδοσης" />
               </label>
               <label className="market-search-field postcode">
                 <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 10.2c0 5-7 10.2-7 10.2S5 15.2 5 10.2a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.2"/></svg></span>
-                <input name="postal_code" inputMode="numeric" pattern="[0-9]{5}" minLength={5} maxLength={5} placeholder="Τ.Κ. 5 ψηφίων" aria-label="Ταχυδρομικός κώδικας 5 ψηφίων" />
+                <input name="postal_code" inputMode="numeric" pattern="[0-9]{5}" minLength={5} maxLength={5} required placeholder="Τ.Κ. 5 ψηφίων" aria-label="Ταχυδρομικός κώδικας 5 ψηφίων" />
               </label>
-              <button type="submit">Βρες καταστήματα <span aria-hidden="true">→</span></button>
+              <button type="submit">Δες τι παραδίδεται <span aria-hidden="true">→</span></button>
             </form>
             <div className="market-hero-shortcuts" aria-label="Γρήγορη επιλογή κατηγορίας">
               <Link href="/explore?category=food"><MarketplaceIcon type="restaurant" /> Φαγητό & καφές</Link>
@@ -179,30 +202,14 @@ export default async function HomePage() {
               <span><i /> Μόνο ενεργές επιλογές</span>
             </div>
           </div>
-          <div className="market-hero-visual" aria-hidden="true">
-            <div className="market-visual-halo" />
-            <div className="market-visual-window">
-              <div className="market-visual-window-top">
-                <span className="market-visual-brand-mark"><svg viewBox="0 0 40 40"><path d="M12 16.5h16l-1.5 17h-13z" fill="white"/><path d="M16 17v-3a4 4 0 0 1 8 0v3" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"/><path d="m21 20-4 6h4l-1 4 5-7h-4l1-3z" fill="#FFC928"/></svg></span>
-                <span><b>E-DELIVERY</b><small>Η ΑΓΟΡΑ ΤΗΣ ΓΕΙΤΟΝΙΑΣ ΣΟΥ</small></span>
-                <i>● ● ●</i>
-              </div>
-              <div className="market-visual-window-copy">
-                <span>ΜΙΑ ΑΝΑΖΗΤΗΣΗ. ΠΟΛΛΕΣ ΕΠΙΛΟΓΕΣ.</span>
-                <strong>Η γειτονιά σου,<br /><em>σε ένα μέρος.</em></strong>
-                <small>Ανακάλυψε όσα χρειάζεσαι καθημερινά.</small>
-              </div>
-              <div className="market-visual-category-list">
-                <div><span className="visual-icon food"><MarketplaceIcon type="restaurant" /></span><b>Φαγητό</b><small>Εστιατόρια</small></div>
-                <div><span className="visual-icon coffee"><MarketplaceIcon type="cafe" /></span><b>Καφές</b><small>Καφέ & φούρνοι</small></div>
-                <div><span className="visual-icon market"><MarketplaceIcon type="supermarket" /></span><b>Αγορές</b><small>Supermarket</small></div>
-              </div>
-              <div className="market-visual-window-bottom"><span className="visual-route-mark">↗</span><span><b>Ξεκίνα από τον Τ.Κ. σου</b><small>Διαθεσιμότητα ανά περιοχή</small></span><span className="visual-route-arrow">→</span></div>
+          <div className="market-hero-visual market-hero-photo-composition" aria-label="Ενδεικτικές φωτογραφίες φαγητού, καφέ και φρέσκων προϊόντων">
+            <div className="market-hero-photo-main" style={{ backgroundImage: `url("${storePhotoByType.restaurant}")` }}><span className="market-photo-label">ΑΠΟ ΤΗΝ ΤΟΠΙΚΗ ΑΓΟΡΑ</span></div>
+            <div className="market-hero-photo-side">
+              <div className="market-hero-photo-small grocery-photo" style={{ backgroundImage: `url("${storePhotoByType.supermarket}")` }}><span>ΦΡΕΣΚΑ ΠΡΟΪΟΝΤΑ</span></div>
+              <div className="market-hero-photo-small coffee-photo" style={{ backgroundImage: `url("${storePhotoByType.cafe}")` }}><span>ΚΑΦΕΣ & ΦΟΥΡΝΟΣ</span></div>
             </div>
-            <div className="market-visual-float market-visual-float-top"><span className="visual-float-check">✓</span><span><b>Τοπικές επιχειρήσεις</b><small>Σε μία πλατφόρμα</small></span></div>
-            <div className="market-visual-float market-visual-float-bottom"><span className="visual-float-pin">⌖</span><span><b>Η περιοχή σου</b><small>Με βάση τον Τ.Κ.</small></span></div>
-          </div>
-        </div>
+            <div className="market-hero-photo-note"><span className="photo-note-mark">e</span><span><b>Κάθε μέρα, πιο κοντά.</b><small>Ενδεικτικές φωτογραφίες κατηγοριών</small></span></div>
+          </div>        </div>
       </section>
 
       <section className="market-payment-strip" aria-label="Τρόποι πληρωμής">
@@ -219,7 +226,7 @@ export default async function HomePage() {
           <Link href="/explore" className="market-text-link">Όλες οι κατηγορίες <span>→</span></Link>
         </div>
         {visibleCategories.length > 0 ? (
-          <div className="market-category-grid">{visibleCategories.map((item) => <Link key={item.type} href={`/explore?type=${item.type}`} className={`market-category-tile ${item.tone}`}><span className="market-category-icon"><MarketplaceIcon type={item.type} /></span><strong>{item.label}</strong><small>{item.detail}</small><i>↗</i></Link>)}</div>
+          <div className="market-category-grid">{visibleCategories.map((item) => <Link key={item.type} href={`/explore?type=${item.type}`} className={`market-category-tile photo-category-tile ${item.tone}`} style={{ backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.72)), url("${categoryPhotos[item.type] ?? storePhotoByType.retail}")` }}><span className="market-category-icon"><MarketplaceIcon type={item.type} /></span><strong>{item.label}</strong><small>{item.detail}</small><i>↗</i></Link>)}</div>
         ) : (
           <div className="market-category-empty">Οι κατηγορίες θα ενεργοποιηθούν μαζί με τα πρώτα διαθέσιμα καταστήματα.</div>
         )}

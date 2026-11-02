@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-type Store = { id: string; name: string; city: string };
+type Store = { id: string; name: string; city: string; logo_image_path?: string | null; cover_image_path?: string | null };
 type Product = {
   id: string;
   name: string;
@@ -12,8 +12,21 @@ type Product = {
   currency: string;
   is_available: boolean;
   allergens: string[];
+  image_path: string | null;
 };
 
+const MEDIA_BUCKET = "e-delivery-merchant-media";
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+function publicMediaUrl(path: string | null | undefined) {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !path) return null;
+  const root = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${root}/storage/v1/object/public/${MEDIA_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;;
+}
+function imageExtension(file: File) {
+  return file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+}
 function euro(cents: number) {
   return new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
 }
@@ -24,9 +37,22 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [allergensText, setAllergensText] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [uploadingMedia, setUploadingMedia] = useState("");
+  const [editingProductId, setEditingProductId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editAllergensText, setEditAllergensText] = useState("");
+  const [storeMedia, setStoreMedia] = useState<Record<string, { logo_image_path: string | null; cover_image_path: string | null }>>({});
+  const activeStore = stores.find((store) => store.id === storeId);
+  const activeMedia = {
+    logo_image_path: storeMedia[storeId]?.logo_image_path ?? activeStore?.logo_image_path ?? null,
+    cover_image_path: storeMedia[storeId]?.cover_image_path ?? activeStore?.cover_image_path ?? null
+  };
 
   async function loadProducts() {
     const supabase = createSupabaseBrowserClient();
@@ -34,7 +60,7 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
     setLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select("id,name,description,price_cents,currency,is_available,allergens")
+      .select("id,name,description,price_cents,currency,is_available,allergens,image_path")
       .eq("store_id", storeId)
       .order("name", { ascending: true });
     setLoading(false);
@@ -47,6 +73,47 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
   }
 
   useEffect(() => { void loadProducts(); }, [storeId]);
+
+  function validateImage(file: File) {
+    if (!acceptedImageTypes.has(file.type)) { setMessage("Χρησιμοποίησε εικόνα JPG, PNG ή WebP."); return false; }
+    if (file.size > MAX_IMAGE_BYTES) { setMessage("Η εικόνα πρέπει να είναι έως 5 MB."); return false; }
+    return true;
+  }
+
+  async function uploadStoreImage(slot: "logo_image_path" | "cover_image_path", file: File) {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase || !storeId || !canManage || !validateImage(file)) return;
+    const folder = slot === "logo_image_path" ? "logo" : "cover";
+    const path = `${storeId}/${folder}/${crypto.randomUUID()}.${imageExtension(file)}`;
+    const oldPath = activeMedia[slot];
+    setUploadingMedia(slot); setMessage("");
+    const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+    if (uploadError) { setUploadingMedia(""); setMessage("Η μεταφόρτωση απέτυχε. Έλεγξε ότι εφαρμόστηκε η migration merchant media."); return; }
+    const { error: updateError } = await supabase.from("stores").update({ [slot]: path }).eq("id", storeId);
+    if (updateError) {
+      await supabase.storage.from(MEDIA_BUCKET).remove([path]); setUploadingMedia("");
+      setMessage("Η εικόνα ανέβηκε αλλά δεν συνδέθηκε με το κατάστημα. Έλεγξε τα δικαιώματα."); return;
+    }
+    setStoreMedia((current) => ({ ...current, [storeId]: { ...activeMedia, [slot]: path } }));
+    if (oldPath) await supabase.storage.from(MEDIA_BUCKET).remove([oldPath]);
+    setUploadingMedia(""); setMessage(slot === "logo_image_path" ? "Το λογότυπο ενημερώθηκε." : "Η φωτογραφία εξωφύλλου ενημερώθηκε.");
+  }
+
+  async function uploadProductImage(product: Product, file: File) {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase || !storeId || !canManage || !validateImage(file)) return;
+    const path = `${storeId}/products/${product.id}/${crypto.randomUUID()}.${imageExtension(file)}`;
+    setUploadingMedia(product.id); setMessage("");
+    const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+    if (uploadError) { setUploadingMedia(""); setMessage("Η φωτογραφία προϊόντος δεν ανέβηκε. Έλεγξε τη migration και τα δικαιώματα."); return; }
+    const { error: updateError } = await supabase.from("products").update({ image_path: path }).eq("id", product.id).eq("store_id", storeId);
+    if (updateError) {
+      await supabase.storage.from(MEDIA_BUCKET).remove([path]); setUploadingMedia("");
+      setMessage("Η φωτογραφία δεν συνδέθηκε με το προϊόν."); return;
+    }
+    if (product.image_path) await supabase.storage.from(MEDIA_BUCKET).remove([product.image_path]);
+    setUploadingMedia(""); await loadProducts(); setMessage("Η φωτογραφία προϊόντος ενημερώθηκε.");
+  }
 
   async function addProduct(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,7 +135,7 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       price_cents: Math.round(numericPrice * 100),
       currency: "EUR",
       is_available: true,
-      allergens: []
+      allergens: Array.from(new Set(allergensText.split(",").map((value) => value.trim()).filter(Boolean)))
     });
     setSaving(false);
 
@@ -79,7 +146,55 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
     setName("");
     setDescription("");
     setPrice("");
+    setAllergensText("");
     await loadProducts();
+  }
+
+  function beginProductEdit(product: Product) {
+    setEditingProductId(product.id);
+    setEditName(product.name);
+    setEditDescription(product.description ?? "");
+    setEditPrice((product.price_cents / 100).toFixed(2).replace(".", ","));
+    setEditAllergensText(product.allergens.join(", "));
+    setMessage("");
+  }
+
+  function cancelProductEdit() {
+    setEditingProductId("");
+    setEditName("");
+    setEditDescription("");
+    setEditPrice("");
+    setEditAllergensText("");
+  }
+
+  async function saveProductEdit(event: React.FormEvent<HTMLFormElement>, product: Product) {
+    event.preventDefault();
+    const supabase = createSupabaseBrowserClient();
+    const numericPrice = Number(editPrice.replace(",", "."));
+    if (!supabase || !storeId) return;
+    if (!editName.trim() || !Number.isFinite(numericPrice) || numericPrice < 0 || numericPrice > 100000) {
+      setMessage("Συμπλήρωσε ονομασία και έγκυρη τιμή σε ευρώ.");
+      return;
+    }
+
+    const allergens = Array.from(new Set(editAllergensText.split(",").map((value) => value.trim()).filter(Boolean)));
+    setSaving(true);
+    setMessage("");
+    const { error } = await supabase.from("products").update({
+      name: editName.trim(),
+      description: editDescription.trim() || null,
+      price_cents: Math.round(numericPrice * 100),
+      allergens
+    }).eq("id", product.id).eq("store_id", storeId);
+    setSaving(false);
+
+    if (error) {
+      setMessage("Οι αλλαγές δεν αποθηκεύτηκαν. Έλεγξε τα δικαιώματα του καταστήματος.");
+      return;
+    }
+    cancelProductEdit();
+    await loadProducts();
+    setMessage("Τα στοιχεία του προϊόντος ενημερώθηκαν.");
   }
 
   async function toggleAvailability(product: Product) {
@@ -104,8 +219,18 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
       .eq("id", product.id)
       .eq("store_id", storeId);
     setSaving(false);
-    if (error) setMessage("Δεν ήταν δυνατή η διαγραφή του προϊόντος.");
-    else await loadProducts();
+    if (error) {
+      setMessage("Δεν ήταν δυνατή η διαγραφή του προϊόντος.");
+    } else {
+      if (product.image_path) {
+        const { error: mediaError } = await supabase.storage.from(MEDIA_BUCKET).remove([product.image_path]);
+        await loadProducts();
+        setMessage(mediaError ? "Το προϊόν διαγράφηκε, αλλά η παλιά φωτογραφία χρειάζεται χειροκίνητο καθαρισμό." : "Το προϊόν και η φωτογραφία του διαγράφηκαν.");
+      } else {
+        await loadProducts();
+        setMessage("Το προϊόν διαγράφηκε.");
+      }
+    }
   }
 
   if (stores.length === 0) {
@@ -121,18 +246,51 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
         </select>
       </div>
       {message ? <p className="catalog-message" role="status">{message}</p> : null}
+      {canManage ? <section className="merchant-media-panel">
+        <div className="merchant-media-heading"><p className="eyebrow">STORE PHOTOGRAPHY</p><h3>Η εικόνα του καταστήματός σου</h3><p>Αυθεντικές φωτογραφίες της επιχείρησης · JPG, PNG ή WebP · έως 5 MB.</p></div>
+        <div className="merchant-media-grid">
+          <div className="merchant-media-slot">
+            <div className="merchant-media-preview merchant-logo-preview">{publicMediaUrl(activeMedia.logo_image_path) ? <img src={publicMediaUrl(activeMedia.logo_image_path)!} alt={`Λογότυπο ${activeStore?.name ?? "καταστήματος"}`} /> : <span>{activeStore?.name.trim().slice(0,1).toLocaleUpperCase("el-GR") ?? "E"}</span>}</div>
+            <div><strong>Λογότυπο</strong><small>Τετράγωνη εικόνα 1:1</small></div>
+            <label className="media-upload-button">{uploadingMedia === "logo_image_path" ? "Μεταφόρτωση…" : "Ανέβασε λογότυπο"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadStoreImage("logo_image_path", file); event.currentTarget.value = ""; }} /></label>
+          </div>
+          <div className="merchant-media-slot cover-slot">
+            <div className="merchant-media-preview merchant-cover-preview" style={publicMediaUrl(activeMedia.cover_image_path) ? { backgroundImage: `url("${publicMediaUrl(activeMedia.cover_image_path)}")` } : undefined}>{!activeMedia.cover_image_path ? <span>Φωτογραφία καταστήματος</span> : null}</div>
+            <div><strong>Φωτογραφία εξωφύλλου</strong><small>Οριζόντια φωτογραφία 16:9</small></div>
+            <label className="media-upload-button">{uploadingMedia === "cover_image_path" ? "Μεταφόρτωση…" : "Ανέβασε εξώφυλλο"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadStoreImage("cover_image_path", file); event.currentTarget.value = ""; }} /></label>
+          </div>
+        </div>
+      </section> : null}
       {loading ? <p className="catalog-empty">Φόρτωση προϊόντων…</p> : products.length === 0 ? <div className="catalog-empty"><h3>Ο κατάλογος είναι ακόμη κενός</h3><p>Πρόσθεσε τα πρώτα πραγματικά προϊόντα και τις τιμές τους.</p></div> : <div className="catalog-list">
         {products.map((product) => <article className="catalog-product" key={product.id}>
-          <div className="catalog-product-info">
-            <strong>{product.name}</strong>
-            {product.description ? <p>{product.description}</p> : null}
-            <span>{euro(product.price_cents)} · {product.is_available ? "Διαθέσιμο" : "Μη διαθέσιμο"}</span>
-          </div>
-          {canManage ? <div className="catalog-product-actions">
-            <button type="button" className="table-action" disabled={saving} onClick={() => toggleAvailability(product)}>{product.is_available ? "Απόκρυψη" : "Δημοσίευση"}</button>
-            <button type="button" className="table-cancel" disabled={saving} onClick={() => removeProduct(product)}>Διαγραφή</button>
-          </div> : null}
+          <div className="catalog-product-photo">{publicMediaUrl(product.image_path) ? <img src={publicMediaUrl(product.image_path)!} alt={`Φωτογραφία ${product.name}`} /> : <span>✳</span>}</div>
+          {editingProductId === product.id ? <form className="catalog-inline-edit" onSubmit={(event) => void saveProductEdit(event, product)}>
+            <label>Ονομασία<input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={120} required /></label>
+            <label>Περιγραφή<textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} maxLength={500} rows={2} /></label>
+            <div className="catalog-edit-fields">
+              <label>Τιμή (€)<input inputMode="decimal" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} required /></label>
+              <label>Αλλεργιογόνα<input value={editAllergensText} onChange={(event) => setEditAllergensText(event.target.value)} placeholder="π.χ. γλουτένη, γάλα" /></label>
+            </div>
+            <div className="catalog-edit-actions">
+              <button className="primary-button" type="submit" disabled={saving}>{saving ? "Αποθήκευση…" : "Αποθήκευση αλλαγών"}</button>
+              <button className="secondary-button" type="button" disabled={saving} onClick={cancelProductEdit}>Ακύρωση</button>
+            </div>
+          </form> : <>
+            <div className="catalog-product-info">
+              <strong>{product.name}</strong>
+              {product.description ? <p>{product.description}</p> : null}
+              <span>{euro(product.price_cents)} · {product.is_available ? "Διαθέσιμο" : "Μη διαθέσιμο"}</span>
+              {product.allergens.length ? <small>Αλλεργιογόνα: {product.allergens.join(", ")}</small> : null}
+            </div>
+            {canManage ? <div className="catalog-product-actions">
+              <label className="media-upload-button compact">{uploadingMedia === product.id ? "Μεταφόρτωση…" : "Φωτογραφία"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia) || saving} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadProductImage(product, file); event.currentTarget.value = ""; }} /></label>
+              <button type="button" className="table-action" disabled={saving || Boolean(uploadingMedia)} onClick={() => beginProductEdit(product)}>Επεξεργασία</button>
+              <button type="button" className="table-action" disabled={saving || Boolean(uploadingMedia)} onClick={() => toggleAvailability(product)}>{product.is_available ? "Απόκρυψη" : "Δημοσίευση"}</button>
+              <button type="button" className="table-cancel" disabled={saving || Boolean(uploadingMedia)} onClick={() => removeProduct(product)}>Διαγραφή</button>
+            </div> : null}
+          </>}
         </article>)}
+
       </div>}
     </section>
 
@@ -145,9 +303,11 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
         <textarea id="product-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={3} placeholder="Σύντομη περιγραφή και βασικά συστατικά" />
         <label htmlFor="product-price">Τιμή (€)</label>
         <input id="product-price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} required placeholder="π.χ. 8,90" />
+        <label htmlFor="product-allergens">Αλλεργιογόνα</label>
+        <input id="product-allergens" value={allergensText} onChange={(event) => setAllergensText(event.target.value)} maxLength={300} placeholder="π.χ. γλουτένη, γάλα, ξηροί καρποί" />
         <button className="primary-button" type="submit" disabled={saving}>{saving ? "Αποθήκευση…" : "Προσθήκη προϊόντος"}</button>
       </form>
-      <p className="tiny-note">Οι τιμές αποθηκεύονται σε λεπτά του ευρώ. Τα αλλεργιογόνα πρέπει να συμπληρώνονται και να ελέγχονται πριν από δημόσια διάθεση· η ειδική διαχείρισή τους θα προστεθεί στο επόμενο βήμα.</p>
+      <p className="tiny-note">Οι τιμές αποθηκεύονται σε λεπτά του ευρώ. Τα αλλεργιογόνα καταχωρούνται ως διαχωρισμένη λίστα και πρέπει να επαληθεύονται από το κατάστημα πριν από τη δημόσια διάθεση.</p>
     </section> : null}
   </div>;
 }
