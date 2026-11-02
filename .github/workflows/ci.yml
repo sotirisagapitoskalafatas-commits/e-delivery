@@ -10,6 +10,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Guard against malformed SQL function delimiters
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+
+          offenders = []
+          for path in sorted(Path("supabase/migrations").glob("*.sql")):
+              for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+                  if line.strip().lower() == "as $" or line.strip() == "$;":
+                      offenders.append(f"{path}:{line_number}: malformed dollar-quote delimiter")
+
+          if offenders:
+              print("\\n".join(offenders))
+              sys.exit(1)
+          print("SQL function delimiters: OK")
+          PY
       - uses: pnpm/action-setup@v4
         with:
           version: 10.20.0
