@@ -733,3 +733,7 @@ html[data-theme="dark"] .menu-category-chip{background:#24262b;border-color:#414
 html[data-theme="dark"] .menu-category-chip span{background:#3a3d44;color:#d5d7db}
 html[data-theme="dark"] .menu-category-chip.active{background:#ffc928;border-color:#ffc928;color:#171717}
 html[data-theme="dark"] .menu-category-chip.active span{background:#171717;color:#ffc928}
+
+.store-hours-status{display:inline-flex;align-items:center;width:max-content;margin:0 0 9px;padding:5px 8px;border-radius:99px;font-size:8px;font-weight:850}
+.store-hours-status.is-open{background:#e8f7ef;color:#16784f}
+.store-hours-status.is-closed{background:#f1f2f4;color:#697383}
