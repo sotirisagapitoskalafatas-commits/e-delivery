@@ -75,6 +75,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stores, setStores] = useState<Store[]>([]);
+  const [favoriteStoreIds, setFavoriteStoreIds] = useState<string[]>([]);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoriteBusyStoreId, setFavoriteBusyStoreId] = useState("");
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -134,6 +137,9 @@ export default function App() {
         setAddressId("");
         setSearchAddress("");
         setSearchPostalCode("");
+        setFavoriteStoreIds([]);
+        setFavoritesOnly(false);
+        setFavoriteBusyStoreId("");
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -172,23 +178,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     if (!session) {
       setAddresses([]);
       setAddressId("");
       setOrders([]);
       setExpressRequests([]);
       setServiceRequests([]);
+      setFavoriteStoreIds([]);
+      setFavoritesOnly(false);
       return;
     }
 
     let active = true;
     Promise.all([
-      supabase.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
-      supabase.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
-      supabase.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
-      supabase.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30)
-    ]).then(([addressResult, orderResult, expressResult, bookingResult]) => {
+      client.from("customer_addresses").select("id,label,line1,city,postal_code").order("created_at", { ascending: false }).limit(20),
+      client.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
+      client.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
+      client.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30),
+      client.from("customer_favorites").select("store_id").order("created_at", { ascending: false }).limit(500)
+    ]).then(([addressResult, orderResult, expressResult, bookingResult, favoriteResult]) => {
       if (!active) return;
       if (addressResult.error) setError("Δεν ήταν δυνατή η φόρτωση διευθύνσεων.");
       else {
@@ -208,6 +218,8 @@ export default function App() {
       else setExpressRequests((expressResult.data ?? []) as ExpressRequest[]);
       if (bookingResult.error) setError("Δεν ήταν δυνατή η φόρτωση αιτημάτων υπηρεσιών.");
       else setServiceRequests((bookingResult.data ?? []) as unknown as ServiceRequest[]);
+      if (!favoriteResult.error) setFavoriteStoreIds((favoriteResult.data ?? []).map((row) => row.store_id));
+      else setFavoriteStoreIds([]);
     });
     return () => { active = false; };
   }, [session]);
@@ -230,6 +242,31 @@ export default function App() {
   const activePostalCode = searchPostalCode.length === 5 ? searchPostalCode : selectedAddress?.postal_code ?? "";
   const deliveryFeeCents = store?.base_delivery_fee_cents ?? 0;
   const totalCents = subtotal + deliveryFeeCents;
+
+  async function toggleFavorite(candidate: Store) {
+    const client = supabase;
+    if (!session) {
+      setShowAuth(true);
+      setError("Συνδέσου για να αποθηκεύσεις καταστήματα στα αγαπημένα σου.");
+      return;
+    }
+    if (!client || favoriteBusyStoreId) return;
+
+    const alreadySaved = favoriteStoreIds.includes(candidate.id);
+    setFavoriteBusyStoreId(candidate.id);
+    setError("");
+    const result = alreadySaved
+      ? await client.from("customer_favorites").delete().eq("customer_id", session.user.id).eq("store_id", candidate.id)
+      : await client.from("customer_favorites").insert({ customer_id: session.user.id, store_id: candidate.id });
+    setFavoriteBusyStoreId("");
+    if (result.error) {
+      setError("Δεν αποθηκεύτηκε το αγαπημένο. Έλεγξε ότι εφαρμόστηκε η migration 009 και δοκίμασε ξανά.");
+      return;
+    }
+    setFavoriteStoreIds((current) => alreadySaved
+      ? current.filter((id) => id !== candidate.id)
+      : current.includes(candidate.id) ? current : [...current, candidate.id]);
+  }
 
   async function loadOrders() {
     const client = supabase;
@@ -271,7 +308,8 @@ export default function App() {
     const matchesSearch = !normalizedSearch || `${candidate.name} ${candidate.description ?? ""} ${candidate.city}`.toLocaleLowerCase("el-GR").includes(normalizedSearch);
     const matchesFreeDelivery = !freeDeliveryOnly || candidate.base_delivery_fee_cents === 0;
     const matchesMenuCategory = !menuCategoryFilter || menuCategories.some((item) => item.store_id === candidate.id && item.name.localeCompare(menuCategoryFilter, "el", { sensitivity: "base" }) === 0);
-    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery && matchesMenuCategory;
+    const matchesFavorite = !favoritesOnly || favoriteStoreIds.includes(candidate.id);
+    return inCoverage && inCategory && matchesType && matchesSearch && matchesFreeDelivery && matchesMenuCategory && matchesFavorite;
   });
   const sortedStores = [...visibleStores].sort((a, b) => {
     if (storeSort === "delivery") return a.base_delivery_fee_cents - b.base_delivery_fee_cents || a.name.localeCompare(b.name, "el");
@@ -690,13 +728,28 @@ export default function App() {
             <Text style={styles.freeDeliveryCheck}>{freeDeliveryOnly ? "✓" : "○"}</Text>
             <Text style={freeDeliveryOnly ? styles.freeDeliveryTextActive : styles.freeDeliveryText}>Δωρεάν delivery</Text>
           </Pressable>
+          {session ? <Pressable style={[styles.favoriteFilterChip, favoritesOnly && styles.favoriteFilterChipActive]} onPress={() => setFavoritesOnly((current) => !current)}>
+            <Text style={styles.favoriteFilterIcon}>♥</Text>
+            <Text style={favoritesOnly ? styles.favoriteFilterTextActive : styles.favoriteFilterText}>Αγαπημένα · {favoriteStoreIds.length}</Text>
+          </Pressable> : null}
           {freeDeliveryOnly && sortedStores.length === 0 ? <Text style={styles.mutedSmall}>Δεν βρέθηκαν καταστήματα με μηδενικό βασικό κόστος παράδοσης για τα τρέχοντα φίλτρα.</Text> : null}
         </View>
-        {sortedStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση.</Text></View> : sortedStores.map((item) => <Pressable key={item.id} style={styles.store} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
-          <Image source={{ uri: storePhoto(item) }} style={styles.storePhoto} accessibilityLabel={item.cover_image_path ? `Φωτογραφία ${item.name}` : `Ενδεικτική φωτογραφία κατηγορίας για ${item.name}`} />
-          <View style={{ flex: 1 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text>{item.open_status === "open" ? <Text style={styles.storeOpenStatus}>Ανοιχτό τώρα</Text> : item.open_status === "closed" ? <Text style={styles.storeClosedStatus}>Κλειστό τώρα</Text> : null}<Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
-          <Text style={styles.arrow}>›</Text>
-        </Pressable>)}
+        {sortedStores.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>{favoritesOnly ? "Δεν έχεις αποθηκεύσει καταστήματα σε αυτή την κατηγορία." : activePostalCode ? "Δεν βρέθηκαν ενεργά καταστήματα για αυτόν τον Τ.Κ." : "Δεν υπάρχουν ακόμη ενεργά καταστήματα"}</Text><Text style={styles.mutedSmall}>{favoritesOnly ? "Πάτησε την καρδιά σε ένα κατάστημα για να το προσθέσεις στα αγαπημένα σου." : "Η διαθεσιμότητα εμφανίζεται μόνο για καταστήματα με ενεργή εξυπηρέτηση."}</Text></View> : sortedStores.map((item) => <View key={item.id} style={styles.store}>
+          <Pressable style={styles.storeMain} onPress={() => { setStore(item); setCart({}); setFulfillmentMethod(item.platform_delivery_enabled ? "platform" : item.merchant_delivery_enabled ? "merchant" : "independent"); setScreen("stores"); }}>
+            <Image source={{ uri: storePhoto(item) }} style={styles.storePhoto} accessibilityLabel={item.cover_image_path ? `Φωτογραφία ${item.name}` : `Ενδεικτική φωτογραφία κατηγορίας για ${item.name}`} />
+            <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.storeName}>{item.name}</Text><Text style={styles.mutedSmall}>{item.description ?? item.city}</Text>{item.open_status === "open" ? <Text style={styles.storeOpenStatus}>Ανοιχτό τώρα</Text> : item.open_status === "closed" ? <Text style={styles.storeClosedStatus}>Κλειστό τώρα</Text> : null}<Text style={styles.mutedSmall}>Προετοιμασία ~{item.prep_time_minutes}′ · Ελάχιστη {euro(item.minimum_order_cents)}</Text><Text style={styles.mutedSmall}>{item.base_delivery_fee_cents === 0 ? "Δωρεάν delivery" : `Delivery ${euro(item.base_delivery_fee_cents)}`}</Text></View>
+            <Text style={styles.arrow}>›</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.favoriteButton, favoriteStoreIds.includes(item.id) && styles.favoriteButtonActive]}
+            accessibilityRole="button"
+            accessibilityLabel={favoriteStoreIds.includes(item.id) ? `Αφαίρεση ${item.name} από αγαπημένα` : `Προσθήκη ${item.name} στα αγαπημένα`}
+            disabled={favoriteBusyStoreId === item.id}
+            onPress={() => void toggleFavorite(item)}
+          >
+            <Text style={favoriteStoreIds.includes(item.id) ? styles.favoriteIconActive : styles.favoriteIcon}>{favoriteBusyStoreId === item.id ? "…" : favoriteStoreIds.includes(item.id) ? "♥" : "♡"}</Text>
+          </Pressable>
+        </View>)}
         <Text style={styles.sectionTitle}>Η διεύθυνσή σου</Text>
         {session ? <>
           {addresses.map((address) => <Pressable key={address.id} style={[styles.address, addressId === address.id && styles.addressSelected]} onPress={() => { setAddressId(address.id); setSearchPostalCode(address.postal_code); setSearchAddress(`${address.line1}, ${address.city}`); }}><Text style={styles.productName}>{address.label}</Text><Text style={styles.mutedSmall}>{address.line1}, {address.city} {address.postal_code}</Text></Pressable>)}
@@ -815,7 +868,17 @@ const styles = StyleSheet.create({
   error: { color: "#B83D45", fontSize: 12 },
   logout: { color: "#E31E24", fontWeight: "700", fontSize: 12 },
   sectionTitle: { marginTop: 16, color: "#192943", fontSize: 17, fontWeight: "800" },
-  store: { flexDirection: "row", alignItems: "center", gap: 14, padding: 15, borderRadius: 17, backgroundColor: "white", borderWidth: 1, borderColor: "#E9EDF4" },
+  store: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 17, backgroundColor: "white", borderWidth: 1, borderColor: "#E9EDF4" },
+  storeMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
+  favoriteButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 99, backgroundColor: "#F5F6F8", borderWidth: 1, borderColor: "#E9EDF4" },
+  favoriteButtonActive: { backgroundColor: "#FFF0F0", borderColor: "#F4C9CC" },
+  favoriteIcon: { color: "#8791A0", fontSize: 21, lineHeight: 24 },
+  favoriteIconActive: { color: "#E31E24", fontSize: 19, lineHeight: 24 },
+  favoriteFilterChip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 99, backgroundColor: "#F4F5F7", borderWidth: 1, borderColor: "#E7EAF0" },
+  favoriteFilterChipActive: { backgroundColor: "#FFF0F0", borderColor: "#F2C7CB" },
+  favoriteFilterIcon: { color: "#E31E24", fontSize: 11, fontWeight: "900" },
+  favoriteFilterText: { color: "#677285", fontSize: 9, fontWeight: "700" },
+  favoriteFilterTextActive: { color: "#BA1D25", fontSize: 9, fontWeight: "900" },
   storeOpenStatus: { color: "#16784F", fontSize: 10, fontWeight: "900", marginTop: 4 },
   storeClosedStatus: { color: "#77808D", fontSize: 10, fontWeight: "800", marginTop: 4 },
   storeIcon: { width: 52, height: 52, borderRadius: 15, backgroundColor: "#FFF3C8", alignItems: "center", justifyContent: "center" },
