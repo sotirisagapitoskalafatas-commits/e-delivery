@@ -392,6 +392,7 @@ export default function App() {
   const count = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
   const cartSignature = JSON.stringify(Object.entries(cart).sort(([a], [b]) => a.localeCompare(b)));
   const selectedAddress = addresses.find((address) => address.id === addressId);
+  const selectedSupportTicket = supportTickets.find((ticket) => ticket.id === selectedSupportTicketId) ?? null;
   const activePostalCode = searchPostalCode.length === 5 ? searchPostalCode : selectedAddress?.postal_code ?? "";
   const deliveryFeeCents = store?.base_delivery_fee_cents ?? 0;
   const totalCents = subtotal + deliveryFeeCents;
@@ -779,6 +780,62 @@ export default function App() {
           <View style={styles.noticeCard}><Text style={styles.mutedSmall}>Ο πάροχος θα απαντήσει με διαθεσιμότητα και προσφορά. Δεν γίνεται πληρωμή σε αυτό το βήμα.</Text></View>
           <Pressable style={styles.primary} onPress={submitServiceRequest} disabled={serviceSubmitting || !selectedAddress}><Text style={styles.primaryText}>{serviceSubmitting ? "Υποβολή…" : "Αποστολή αιτήματος"}</Text></Pressable>
         </> : visibleServices.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν βρέθηκαν διαθέσιμοι πάροχοι υπηρεσιών</Text><Text style={styles.mutedSmall}>Η διαθεσιμότητα εμφανίζεται μόνο σε επιβεβαιωμένες περιοχές. Δοκίμασε άλλη αποθηκευμένη διεύθυνση.</Text></View> : visibleServices.map((provider) => <Pressable key={provider.id} style={styles.store} onPress={() => setServiceProvider(provider)}><View style={styles.storeIcon}><Text style={styles.storeEmoji}>🛠</Text></View><View style={{ flex: 1 }}><Text style={styles.storeName}>{provider.name}</Text><Text style={styles.mutedSmall}>{provider.description ?? provider.city}</Text><Text style={styles.mutedSmall}>{provider.city}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}
+      </> : screen === "support" && !store ? <>
+        <Pressable onPress={() => { setSelectedSupportTicketId(""); setScreen("stores"); }}><Text style={styles.back}>‹ Ανακάλυψη</Text></Pressable>
+        <Text style={styles.title}>Υποστήριξη</Text>
+        <Text style={styles.muted}>Επικοινώνησε με την ομάδα E-DELIVERY για παραγγελίες, παράδοση, πληρωμές ή τον λογαριασμό σου.</Text>
+        {selectedSupportTicketId ? <>
+          <Pressable onPress={() => { setSelectedSupportTicketId(""); setSupportReply(""); }}><Text style={styles.back}>‹ Όλα τα αιτήματα</Text></Pressable>
+          {selectedSupportTicket ? <View style={styles.supportTicketHeader}>
+            <View style={{ flex: 1 }}><Text style={styles.eyebrow}>SUPPORT CASE · #{selectedSupportTicket.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.productName}>{selectedSupportTicket.subject}</Text></View>
+            <Text style={styles.supportStatus}>{supportStatusLabel(selectedSupportTicket.status)}</Text>
+          </View> : null}
+          {supportLoading ? <View style={styles.orderDetailLoading}><ActivityIndicator size="small" color="#E31E24" /><Text style={styles.mutedSmall}>Φόρτωση συνομιλίας…</Text></View> : <View style={styles.supportMessagesList}>
+            {supportMessages.length === 0 ? <Text style={styles.mutedSmall}>Δεν υπάρχουν ακόμη μηνύματα.</Text> : supportMessages.map((message) => {
+              const mine = message.author_user_id === session?.user.id;
+              return <View key={message.id} style={[styles.supportMessageBubble, mine ? styles.supportMessageMine : styles.supportMessageTeam]}>
+                <Text style={styles.supportMessageAuthor}>{mine ? "Εσύ" : "Ομάδα E-DELIVERY"}</Text>
+                <Text style={styles.supportMessageText}>{message.message}</Text>
+                <Text style={styles.supportMessageTime}>{new Date(message.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+              </View>;
+            })}
+          </View>}
+          {selectedSupportTicket && ["open", "in_progress", "waiting_customer"].includes(selectedSupportTicket.status) ? <>
+            <TextInput style={[styles.input, styles.multiline]} multiline numberOfLines={3} placeholder="Γράψε την απάντησή σου…" value={supportReply} onChangeText={setSupportReply} maxLength={4000} />
+            <Pressable style={styles.primary} onPress={sendSupportReply} disabled={supportSubmitting || supportReply.trim().length === 0}><Text style={styles.primaryText}>{supportSubmitting ? "Αποστολή…" : "Αποστολή μηνύματος"}</Text></Pressable>
+          </> : <View style={styles.noticeCard}><Text style={styles.mutedSmall}>Το αίτημα έχει επιλυθεί ή κλείσει. Δημιούργησε νέο αίτημα για επιπλέον βοήθεια.</Text></View>}
+        </> : <>
+          <View style={styles.supportFormCard}>
+            <Text style={styles.sectionTitle}>Νέο αίτημα</Text>
+            <Text style={styles.mutedSmall}>Κατηγορία</Text>
+            <View style={styles.supportCategoryRow}>
+              {Object.entries(supportCategoryLabels).map(([value, label]) => <Pressable key={value} style={[styles.supportCategoryChip, supportCategory === value && styles.supportCategoryChipActive]} onPress={() => setSupportCategory(value)}>
+                <Text style={supportCategory === value ? styles.supportCategoryTextActive : styles.supportCategoryText}>{label}</Text>
+              </Pressable>)}
+            </View>
+            {orders.length ? <>
+              <Text style={styles.mutedSmall}>Σχετική παραγγελία (προαιρετικά)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supportCategoryRow}>
+                <Pressable style={[styles.supportCategoryChip, !supportOrderId && styles.supportCategoryChipActive]} onPress={() => setSupportOrderId("")}><Text style={!supportOrderId ? styles.supportCategoryTextActive : styles.supportCategoryText}>Χωρίς παραγγελία</Text></Pressable>
+                {orders.slice(0, 8).map((order) => <Pressable key={order.id} style={[styles.supportCategoryChip, supportOrderId === order.id && styles.supportCategoryChipActive]} onPress={() => setSupportOrderId(order.id)}>
+                  <Text style={supportOrderId === order.id ? styles.supportCategoryTextActive : styles.supportCategoryText}>#{order.id.slice(0, 8).toUpperCase()}</Text>
+                </Pressable>)}
+              </ScrollView>
+            </> : null}
+            <TextInput style={styles.input} placeholder="Θέμα αιτήματος" value={supportSubject} onChangeText={setSupportSubject} maxLength={140} />
+            <TextInput style={[styles.input, styles.multiline]} multiline numberOfLines={5} placeholder="Περιέγραψε πώς μπορούμε να βοηθήσουμε (10–4.000 χαρακτήρες)." value={supportInitialMessage} onChangeText={setSupportInitialMessage} maxLength={4000} />
+            <Pressable style={styles.primary} onPress={createSupportTicket} disabled={supportSubmitting || supportSubject.trim().length < 3 || supportInitialMessage.trim().length < 10}>
+              <Text style={styles.primaryText}>{supportSubmitting ? "Υποβολή…" : "Δημιουργία αιτήματος"}</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.sectionTitle}>Τα αιτήματά σου</Text>
+          {supportTickets.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν έχεις αιτήματα υποστήριξης</Text><Text style={styles.mutedSmall}>Όταν στείλεις ένα αίτημα, η συνομιλία θα εμφανιστεί εδώ.</Text></View> : supportTickets.map((ticket) => <Pressable key={ticket.id} style={styles.supportTicketCard} onPress={() => setSelectedSupportTicketId(ticket.id)}>
+            <View style={styles.orderHeader}><Text style={styles.productName}>{ticket.subject}</Text><Text style={styles.supportStatus}>{supportStatusLabel(ticket.status)}</Text></View>
+            <Text style={styles.mutedSmall}>{supportCategoryLabels[ticket.category] ?? "Υποστήριξη"} · #{ticket.id.slice(0, 8).toUpperCase()}</Text>
+            <Text style={styles.mutedSmall}>Τελευταία ενημέρωση: {new Date(ticket.updated_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+            <Text style={styles.link}>Άνοιγμα συνομιλίας →</Text>
+          </Pressable>)}
+        </>}
       </> : screen === "orders" && !store ? <>
         <Pressable onPress={() => setScreen("stores")}><Text style={styles.back}>‹ Καταστήματα</Text></Pressable>
         <Text style={styles.title}>Οι παραγγελίες μου</Text>
@@ -1046,13 +1103,15 @@ export default function App() {
         { id: "stores" as const, label: "Ανακάλυψη", icon: "⌕" },
         { id: "express" as const, label: "Express", icon: "↗" },
         { id: "services" as const, label: "Υπηρεσίες", icon: "⌂" },
-        { id: "orders" as const, label: "Ιστορικό", icon: "▤" }
+        { id: "orders" as const, label: "Ιστορικό", icon: "▤" },
+        { id: "support" as const, label: "Βοήθεια", icon: "?" }
       ]).map((item) => <Pressable key={item.id} style={styles.bottomTab} onPress={() => {
         setStore(null); setServiceProvider(null);
         if (!session && item.id !== "stores") { setShowAuth(true); setError("Συνδέσου για να χρησιμοποιήσεις αυτή τη λειτουργία."); return; }
         setError("");
         setScreen(item.id);
         if (item.id === "orders") void loadOrders();
+        if (item.id === "support") void loadSupportTickets();
       }}>
         <Text style={screen === item.id ? styles.bottomTabIconSelected : styles.bottomTabIcon}>{item.icon}</Text>
         <Text style={screen === item.id ? styles.bottomTabLabelSelected : styles.bottomTabLabel}>{item.label}</Text>
@@ -1172,6 +1231,22 @@ const styles = StyleSheet.create({
   totalLabel: { color: "#14223B", fontSize: 14, fontWeight: "900" },
   orderCard: { backgroundColor: "white", padding: 16, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 6 },
   orderDetailCard: { backgroundColor: "white", borderRadius: 18, padding: 17, borderWidth: 1, borderColor: "#E5EAF2", gap: 13 },
+  supportFormCard: { backgroundColor: "white", borderRadius: 17, padding: 16, borderWidth: 1, borderColor: "#E5EAF2", gap: 11 },
+  supportCategoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, paddingVertical: 4 },
+  supportCategoryChip: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "#F4F5F7", borderRadius: 99, borderWidth: 1, borderColor: "#E7EAF0" },
+  supportCategoryChipActive: { backgroundColor: "#FFF0F0", borderColor: "#F2C7CB" },
+  supportCategoryText: { color: "#677285", fontSize: 9, fontWeight: "700" },
+  supportCategoryTextActive: { color: "#BA1D25", fontSize: 9, fontWeight: "900" },
+  supportTicketCard: { backgroundColor: "white", borderRadius: 15, padding: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 7 },
+  supportTicketHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, backgroundColor: "white", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#E5EAF2" },
+  supportStatus: { color: "#8A5910", backgroundColor: "#FFF4D8", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 99, overflow: "hidden", fontSize: 9, fontWeight: "900" },
+  supportMessagesList: { backgroundColor: "#F1F3F6", borderRadius: 15, padding: 12, gap: 10, minHeight: 100 },
+  supportMessageBubble: { maxWidth: "88%", borderRadius: 13, padding: 11, gap: 5 },
+  supportMessageMine: { alignSelf: "flex-end", backgroundColor: "#FFF0F0", borderWidth: 1, borderColor: "#F2D1D3" },
+  supportMessageTeam: { alignSelf: "flex-start", backgroundColor: "white", borderWidth: 1, borderColor: "#E4E9F0" },
+  supportMessageAuthor: { color: "#667386", fontSize: 8, fontWeight: "900" },
+  supportMessageText: { color: "#26364D", fontSize: 11, lineHeight: 17 },
+  supportMessageTime: { color: "#929BA8", fontSize: 8, textAlign: "right" },
   orderDetailHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
   orderDetailTitle: { color: "#182740", fontSize: 22, fontWeight: "900", letterSpacing: -0.7 },
   orderDetailLoading: { flexDirection: "row", gap: 10, alignItems: "center", paddingVertical: 22 },
