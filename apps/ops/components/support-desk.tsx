@@ -15,7 +15,6 @@ export type SupportDeskTicket = {
   created_at: string;
   updated_at: string;
   customer: { full_name: string | null; phone: string | null } | null;
-  order: { id: string; status: string } | null;
 };
 
 type SupportDeskMessage = {
@@ -85,7 +84,7 @@ export function SupportDesk({ initialTickets, currentUserId }: { initialTickets:
     const client = createSupabaseBrowserClient();
     if (!client) return;
     const { data, error } = await client.from("support_tickets")
-      .select("id,customer_id,order_id,category,subject,status,priority,assigned_to,created_at,updated_at,customer:profiles(full_name,phone),order:orders(id,status)")
+      .select("id,customer_id,order_id,category,subject,status,priority,assigned_to,created_at,updated_at,customer:profiles(full_name,phone)")
       .order("updated_at", { ascending: false })
       .limit(300);
     if (error) {
@@ -176,7 +175,6 @@ export function SupportDesk({ initialTickets, currentUserId }: { initialTickets:
               <option value="normal">Κανονική</option>
               <option value="urgent">Επείγουσα</option>
             </select></label>
-            {selected.order ? <span className="support-linked-order">Παραγγελία: {statusLabels[selected.order.status] ?? selected.order.status.replaceAll("_", " ")}</span> : null}
           </div>
           {notice ? <p className="support-notice" role="status">{notice}</p> : null}
           <div className="support-thread-messages">
