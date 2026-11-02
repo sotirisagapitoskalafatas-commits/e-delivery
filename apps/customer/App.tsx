@@ -39,6 +39,7 @@ function storeOpenStatus(storeId: string, timezone: string | undefined, rows: St
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
 type OrderDetail = {
   id: string;
+  store_id: string;
   status: string;
   currency: string;
   subtotal_cents: number;
@@ -55,6 +56,7 @@ type OrderDetail = {
 };
 type OrderItem = {
   id: string;
+  product_id: string | null;
   product_name_snapshot: string;
   unit_price_cents: number;
   quantity: number;
@@ -143,6 +145,7 @@ export default function App() {
   const [postalCode, setPostalCode] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [placing, setPlacing] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState("");
@@ -348,11 +351,11 @@ export default function App() {
     setOrderDetailLoading(true);
     Promise.all([
       client.from("orders")
-        .select("id,status,currency,subtotal_cents,delivery_fee_cents,service_fee_cents,discount_cents,total_cents,payment_method,payment_status,fulfillment_method,created_at,delivery_address_snapshot,store:stores(name)")
+        .select("id,store_id,status,currency,subtotal_cents,delivery_fee_cents,service_fee_cents,discount_cents,total_cents,payment_method,payment_status,fulfillment_method,created_at,delivery_address_snapshot,store:stores(name)")
         .eq("id", selectedOrderId)
         .maybeSingle(),
       client.from("order_items")
-        .select("id,product_name_snapshot,unit_price_cents,quantity,line_total_cents,notes,allergens_snapshot")
+        .select("id,product_id,product_name_snapshot,unit_price_cents,quantity,line_total_cents,notes,allergens_snapshot")
         .eq("order_id", selectedOrderId)
         .order("created_at", { ascending: true }),
       client.from("order_events")
@@ -712,11 +715,91 @@ export default function App() {
     setPlacing(false);
     if (orderError) { setError("Η παραγγελία δεν ολοκληρώθηκε. Έλεγξε διαθεσιμότητα, περιοχή και ελάχιστη αξία."); return; }
     setConfirmation(String(data));
+    setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
     setCart({});
     setStore(null);
     setSelectedOrderId(String(data));
     setScreen("orders");
     await loadOrders();
+  }
+
+  async function reorderOrder() {
+    const client = supabase;
+    if (!session) {
+      setShowAuth(true);
+      setError("Συνδέσου για να επαναλάβεις μια παραγγελία.");
+      return;
+    }
+    if (!client || !selectedOrder) return;
+    if (!selectedOrderItems.length || selectedOrderItems.some((item) => !item.product_id)) {
+      setError("Δεν είναι δυνατή η επανάληψη: λείπουν πλέον ορισμένα αρχικά προϊόντα από τον κατάλογο.");
+      return;
+    }
+
+    setReordering(true);
+    setError("");
+    const { data: storeRow, error: storeError } = await client.from("stores")
+      .select("id,name,description,city,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,platform_delivery_enabled,merchant_delivery_enabled,independent_delivery_enabled,service_postal_codes,logo_image_path,cover_image_path,timezone")
+      .eq("id", selectedOrder.store_id)
+      .eq("is_active", true)
+      .eq("accepts_orders", true)
+      .maybeSingle();
+
+    if (storeError || !storeRow) {
+      setReordering(false);
+      setError("Το αρχικό κατάστημα δεν είναι πλέον διαθέσιμο για νέες παραγγελίες.");
+      return;
+    }
+
+    const productIds = Array.from(new Set(selectedOrderItems.map((item) => item.product_id).filter((id): id is string => Boolean(id))));
+    const { data: availableProducts, error: productsError } = await client.from("products")
+      .select("id")
+      .eq("store_id", selectedOrder.store_id)
+      .eq("is_available", true)
+      .in("id", productIds);
+
+    if (productsError || (availableProducts ?? []).length !== productIds.length) {
+      setReordering(false);
+      setError("Κάποια προϊόντα της αρχικής παραγγελίας δεν είναι πλέον διαθέσιμα. Δεν προστέθηκε μερικό καλάθι.");
+      return;
+    }
+
+    const originalMethod = selectedOrder.fulfillment_method;
+    const availableMethods = [
+      storeRow.platform_delivery_enabled ? "platform" : null,
+      storeRow.merchant_delivery_enabled ? "merchant" : null,
+      storeRow.independent_delivery_enabled ? "independent" : null
+    ].filter((method): method is "platform" | "merchant" | "independent" => method !== null);
+    const fulfillment = availableMethods.includes(originalMethod as "platform" | "merchant" | "independent")
+      ? originalMethod as "platform" | "merchant" | "independent"
+      : availableMethods[0];
+
+    if (!fulfillment) {
+      setReordering(false);
+      setError("Το κατάστημα δεν διαθέτει αυτή τη στιγμή ενεργό τρόπο παράδοσης.");
+      return;
+    }
+
+    const nextCart: Record<string, number> = {};
+    for (const item of selectedOrderItems) {
+      const productId = item.product_id;
+      if (!productId) {
+        setReordering(false);
+        setError("Δεν είναι δυνατή η επανάληψη: κάποιο προϊόν δεν υπάρχει πλέον στον κατάλογο.");
+        return;
+      }
+      nextCart[productId] = (nextCart[productId] ?? 0) + item.quantity;
+    }
+
+    setStore(storeRow as Store);
+    setCart(nextCart);
+    setFulfillmentMethod(fulfillment);
+    setCheckoutKey(`checkout-${Date.now()}-${Math.random().toString(36).slice(2,10)}`);
+    setSelectedOrderId("");
+    setScreen("stores");
+    setConfirmation("");
+    setReordering(false);
+    setError("Το καλάθι ετοιμάστηκε με τα διαθέσιμα προϊόντα. Οι σημερινές τιμές και τα έξοδα θα υπολογιστούν ξανά πριν επιβεβαιώσεις την παραγγελία.");
   }
 
   if (!ready) return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#E31E24" /></SafeAreaView>;
@@ -889,6 +972,10 @@ export default function App() {
               <Text style={styles.mutedSmall}>Πληρωμή: {selectedOrder.payment_method === "cash_on_delivery" ? "Μετρητά κατά την παράδοση" : selectedOrder.payment_method.replaceAll("_", " ")} · {selectedOrder.payment_status === "due_on_delivery" ? "Προς εξόφληση" : selectedOrder.payment_status.replaceAll("_", " ")}</Text>
               <Text style={styles.mutedSmall}>Παράδοση: {selectedOrder.fulfillment_method === "platform" ? "Διανομέας E-DELIVERY" : selectedOrder.fulfillment_method === "merchant" ? "Διανομή καταστήματος" : "Συνεργαζόμενο δίκτυο"}</Text>
             </View>
+            <Pressable style={styles.primary} disabled={reordering || orderDetailLoading} onPress={() => void reorderOrder()}>
+              <Text style={styles.primaryText}>{reordering ? "Έλεγχος διαθεσιμότητας…" : "Παράγγειλε ξανά"}</Text>
+            </Pressable>
+            <Text style={styles.mutedSmall}>Η επανάληψη ελέγχει ξανά κατάστημα, προϊόντα και τρόπο παράδοσης. Ισχύουν οι τρέχουσες τιμές και η διεύθυνση που θα επιλέξεις τώρα.</Text>
           </> : <Text style={styles.error}>Δεν είναι διαθέσιμες οι λεπτομέρειες αυτής της παραγγελίας.</Text>}
         </View> : orders.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν έχεις κάνει ακόμη παραγγελία</Text><Text style={styles.mutedSmall}>Οι παραγγελίες σου θα εμφανιστούν εδώ.</Text></View> : orders.map((order) => <Pressable key={order.id} style={styles.orderCard} onPress={() => setSelectedOrderId(order.id)}>
           <View style={styles.orderHeader}><Text style={styles.productName}>#{order.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.orderStatus}>{orderStatusLabel(order.status)}</Text></View>
