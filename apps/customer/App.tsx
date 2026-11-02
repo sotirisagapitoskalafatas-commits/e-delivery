@@ -1051,7 +1051,7 @@ const styles = StyleSheet.create({
   orderTimelineDotCurrent: { backgroundColor: "#E31E24", width: 11, height: 11 },
   orderTimelineLine: { width: 2, flex: 1, minHeight: 28, backgroundColor: "#E5E9EE", marginTop: 3 },
   orderTimelineCopy: { flex: 1, gap: 3, paddingBottom: 12 },
-  orderTimelineStatus: { color: "#26364D", fontSize: 11, fontWeight: "850" },
+  orderTimelineStatus: { color: "#26364D", fontSize: 11, fontWeight: "800" },
   orderItemRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F0F2F5" },
   orderItemPrice: { color: "#182740", fontSize: 12, fontWeight: "900" },
   orderPriceLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
