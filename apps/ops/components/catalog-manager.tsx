@@ -41,6 +41,34 @@ function slotsOverlap(slots: ScheduleSlot[]) {
   }
   return false;
 }
+function weeklyScheduleOverlaps(schedule: DaySchedule[]) {
+  type TimeRange = [number, number];
+  const minutesPerDay = 1440;
+  const minutesPerWeek = minutesPerDay * 7;
+  const ranges: TimeRange[] = [];
+  for (let weekday = 0; weekday < 7; weekday += 1) {
+    const day = schedule[weekday];
+    if (!day || day.isClosed) continue;
+    for (const slot of day.slots) {
+      const start = weekday * minutesPerDay + timeMinutes(slot.opens_at);
+      let end = weekday * minutesPerDay + timeMinutes(slot.closes_at);
+      if (end <= start) end += minutesPerDay;
+      if (end <= minutesPerWeek) ranges.push([start, end]);
+      else {
+        ranges.push([start, minutesPerWeek]);
+        ranges.push([0, end - minutesPerWeek]);
+      }
+    }
+  }
+  for (let i = 0; i < ranges.length; i += 1) {
+    for (let j = i + 1; j < ranges.length; j += 1) {
+      const first = ranges[i];
+      const second = ranges[j];
+      if (first && second && first[0] < second[1] && second[0] < first[1]) return true;
+    }
+  }
+  return false;
+}
 
 type Product = {
   id: string;
@@ -221,6 +249,11 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
           updated_at: updatedAt
         });
       }
+    }
+
+    if (weeklyScheduleOverlaps(schedule)) {
+      setHoursMessage("Το ωράριο επικαλύπτεται μεταξύ διαδοχικών ημερών. Έλεγξε ιδιαίτερα τα διαστήματα που περνούν τα μεσάνυχτα.");
+      return;
     }
 
     setHoursSaving(true);
