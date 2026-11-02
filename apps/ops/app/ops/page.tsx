@@ -77,6 +77,15 @@ export default async function HomePage() {
   ]);
 
   const role = profile?.role ?? "customer";
+  if (role === "support") {
+    return <main className="setup-shell"><section className="setup-card">
+      <span className="brand-mark">e-delivery<span> / SUPPORT</span></span>
+      <p className="eyebrow">CUSTOMER CARE</p><h1>Υποστήριξη πελατών</h1>
+      <p className="muted">Έχεις πρόσβαση μόνο στα αιτήματα υποστήριξης και στις συνομιλίες που χρειάζονται διαχείριση.</p>
+      <Link className="primary-button inline-button" href="/ops/support">Άνοιγμα inbox υποστήριξης</Link>
+      <form action="/api/auth/signout" method="post"><button className="secondary-button" type="submit">Αποσύνδεση</button></form>
+    </section></main>;
+  }
   const authorized = ["ops_admin", "merchant_admin", "merchant_staff"].includes(role);
   const canManage = ["ops_admin", "merchant_admin", "merchant_staff"].includes(role);
   const canDispatch = role === "ops_admin";
@@ -105,6 +114,7 @@ export default async function HomePage() {
       <a className="nav-item" href="#stores">Καταστήματα</a>
       <a className="nav-item" href="#couriers">Διανομείς</a>
       {canDispatch ? <Link className="nav-item" href="/ops/applications">Αιτήσεις συνεργατών</Link> : null}
+      {canDispatch ? <Link className="nav-item" href="/ops/support">Υποστήριξη πελατών</Link> : null}
       <div className="sidebar-bottom"><span className="avatar">{(profile?.full_name ?? auth.user.email ?? "U").slice(0, 1).toUpperCase()}</span><div><strong>{profile?.full_name ?? "Χρήστης"}</strong><small>{role}</small></div></div>
     </aside>
     <section className="dashboard-main">
