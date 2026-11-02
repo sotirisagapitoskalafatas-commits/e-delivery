@@ -87,12 +87,16 @@ function storeOpenStatus(storeId: string, timezone: string, rows: StoreHoursRow[
       return result;
     }, {});
     const weekdays: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const today = weekdays[parts.weekday];
+    const weekdayLabel = parts.weekday;
+    if (!weekdayLabel || !(weekdayLabel in weekdays)) return "unknown";
+    const today = weekdays[weekdayLabel];
     if (today === undefined) return "unknown";
     const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
     const previousDay = (today + 6) % 7;
     const toMinutes = (value: string) => {
-      const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+      const timeParts = value.slice(0, 5).split(":");
+      const hours = Number(timeParts[0]);
+      const minutes = Number(timeParts[1]);
       return hours * 60 + minutes;
     };
     const open = storeRows.some((row) => {
