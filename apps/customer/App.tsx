@@ -37,6 +37,32 @@ function storeOpenStatus(storeId: string, timezone: string | undefined, rows: St
   }
 }
 type Order = { id: string; status: string; total_cents: number; currency: string; created_at: string };
+type OrderDetail = {
+  id: string;
+  status: string;
+  currency: string;
+  subtotal_cents: number;
+  delivery_fee_cents: number;
+  service_fee_cents: number;
+  discount_cents: number;
+  total_cents: number;
+  payment_method: string;
+  payment_status: string;
+  fulfillment_method: string;
+  created_at: string;
+  delivery_address_snapshot: { label?: string; line1?: string; line2?: string | null; city?: string; region?: string | null; postal_code?: string; delivery_instructions?: string | null } | null;
+  store: { name: string } | null;
+};
+type OrderItem = {
+  id: string;
+  product_name_snapshot: string;
+  unit_price_cents: number;
+  quantity: number;
+  line_total_cents: number;
+  notes: string | null;
+  allergens_snapshot: string[];
+};
+type OrderEvent = { id: string; from_status: string | null; to_status: string; reason: string | null; created_at: string };
 type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[]; image_path: string | null };
@@ -65,6 +91,18 @@ function storePhoto(store: Store) {
   return mediaUrl(store.cover_image_path) ?? categoryPhotos[store.store_type] ?? categoryPhotos.retail;
 }
 const euro = (cents: number) => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" }).format(cents / 100);
+const orderStatusLabels: Record<string, string> = {
+  pending_merchant: "Αναμονή καταστήματος",
+  accepted: "Η παραγγελία έγινε αποδεκτή",
+  preparing: "Σε προετοιμασία",
+  ready_for_pickup: "Έτοιμη για παραλαβή",
+  courier_assigned: "Ανατέθηκε σε διανομέα",
+  picked_up: "Παραλήφθηκε από τον διανομέα",
+  delivered: "Παραδόθηκε",
+  rejected: "Απορρίφθηκε",
+  cancelled: "Ακυρώθηκε"
+};
+const orderStatusLabel = (status: string) => orderStatusLabels[status] ?? status.replaceAll("_", " ");
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -90,6 +128,11 @@ export default function App() {
   const [placing, setPlacing] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null);
+  const [selectedOrderItems, setSelectedOrderItems] = useState<OrderItem[]>([]);
+  const [selectedOrderEvents, setSelectedOrderEvents] = useState<OrderEvent[]>([]);
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false);
   const [expressRequests, setExpressRequests] = useState<ExpressRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [serviceProviders, setServiceProviders] = useState<Store[]>([]);
@@ -140,6 +183,10 @@ export default function App() {
         setFavoriteStoreIds([]);
         setFavoritesOnly(false);
         setFavoriteBusyStoreId("");
+        setSelectedOrderId("");
+        setSelectedOrder(null);
+        setSelectedOrderItems([]);
+        setSelectedOrderEvents([]);
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -188,6 +235,10 @@ export default function App() {
       setServiceRequests([]);
       setFavoriteStoreIds([]);
       setFavoritesOnly(false);
+      setSelectedOrderId("");
+      setSelectedOrder(null);
+      setSelectedOrderItems([]);
+      setSelectedOrderEvents([]);
       return;
     }
 
@@ -223,6 +274,48 @@ export default function App() {
     });
     return () => { active = false; };
   }, [session]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !session || !selectedOrderId) {
+      setSelectedOrder(null);
+      setSelectedOrderItems([]);
+      setSelectedOrderEvents([]);
+      setOrderDetailLoading(false);
+      return;
+    }
+    let active = true;
+    setOrderDetailLoading(true);
+    Promise.all([
+      client.from("orders")
+        .select("id,status,currency,subtotal_cents,delivery_fee_cents,service_fee_cents,discount_cents,total_cents,payment_method,payment_status,fulfillment_method,created_at,delivery_address_snapshot,store:stores(name)")
+        .eq("id", selectedOrderId)
+        .maybeSingle(),
+      client.from("order_items")
+        .select("id,product_name_snapshot,unit_price_cents,quantity,line_total_cents,notes,allergens_snapshot")
+        .eq("order_id", selectedOrderId)
+        .order("created_at", { ascending: true }),
+      client.from("order_events")
+        .select("id,from_status,to_status,reason,created_at")
+        .eq("order_id", selectedOrderId)
+        .order("created_at", { ascending: true })
+    ]).then(([orderResult, itemResult, eventResult]) => {
+      if (!active) return;
+      setOrderDetailLoading(false);
+      if (orderResult.error || !orderResult.data) {
+        setSelectedOrder(null);
+        setSelectedOrderItems([]);
+        setSelectedOrderEvents([]);
+        setError("Δεν ήταν δυνατή η φόρτωση των λεπτομερειών της παραγγελίας.");
+        return;
+      }
+      setSelectedOrder(orderResult.data as unknown as OrderDetail);
+      setSelectedOrderItems((itemResult.data ?? []) as OrderItem[]);
+      setSelectedOrderEvents((eventResult.data ?? []) as OrderEvent[]);
+      if (itemResult.error || eventResult.error) setError("Ορισμένες λεπτομέρειες παραγγελίας δεν είναι διαθέσιμες ακόμη.");
+    });
+    return () => { active = false; };
+  }, [session, selectedOrderId]);
 
   useEffect(() => {
     if (!store || !supabase) { setProducts([]); return; }
@@ -487,6 +580,7 @@ export default function App() {
     setConfirmation(String(data));
     setCart({});
     setStore(null);
+    setSelectedOrderId(String(data));
     setScreen("orders");
     await loadOrders();
   }
@@ -557,11 +651,61 @@ export default function App() {
         <Text style={styles.title}>Οι παραγγελίες μου</Text>
         <Text style={styles.muted}>Η κατάσταση ενημερώνεται από το κατάστημα και την ομάδα διανομής.</Text>
         <Pressable style={styles.secondary} onPress={loadOrders}><Text style={styles.secondaryText}>Ανανέωση ιστορικού</Text></Pressable>
-        {orders.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν έχεις κάνει ακόμη παραγγελία</Text><Text style={styles.mutedSmall}>Οι παραγγελίες σου θα εμφανιστούν εδώ.</Text></View> : orders.map((order) => <View key={order.id} style={styles.orderCard}>
-          <View style={styles.orderHeader}><Text style={styles.productName}>#{order.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.orderStatus}>{order.status.replaceAll("_", " ")}</Text></View>
+        {selectedOrderId ? <View style={styles.orderDetailCard}>
+          <Pressable onPress={() => setSelectedOrderId("")}><Text style={styles.back}>‹ Όλες οι παραγγελίες</Text></Pressable>
+          {orderDetailLoading ? <View style={styles.orderDetailLoading}><ActivityIndicator size="small" color="#E31E24" /><Text style={styles.mutedSmall}>Φόρτωση λεπτομερειών…</Text></View> : selectedOrder ? <>
+            <View style={styles.orderDetailHeader}>
+              <View><Text style={styles.eyebrow}>ORDER DETAILS</Text><Text style={styles.orderDetailTitle}>#{selectedOrder.id.slice(0, 8).toUpperCase()}</Text></View>
+              <Text style={styles.orderStatus}>{orderStatusLabel(selectedOrder.status)}</Text>
+            </View>
+            <Text style={styles.mutedSmall}>{selectedOrder.store?.name ?? "Κατάστημα"} · {new Date(selectedOrder.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+            <View style={styles.orderInfoBlock}>
+              <Text style={styles.orderInfoTitle}>Κατάσταση</Text>
+              {selectedOrderEvents.length ? <View style={styles.orderTimeline}>
+                {selectedOrderEvents.map((event, index) => <View key={event.id} style={styles.orderTimelineRow}>
+                  <View style={styles.orderTimelineMarker}><View style={[styles.orderTimelineDot, index === selectedOrderEvents.length - 1 && styles.orderTimelineDotCurrent]} />{index < selectedOrderEvents.length - 1 ? <View style={styles.orderTimelineLine} /> : null}</View>
+                  <View style={styles.orderTimelineCopy}>
+                    <Text style={styles.orderTimelineStatus}>{orderStatusLabel(event.to_status)}</Text>
+                    <Text style={styles.mutedSmall}>{new Date(event.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+                    {event.reason ? <Text style={styles.mutedSmall}>{event.reason}</Text> : null}
+                  </View>
+                </View>)}
+              </View> : <Text style={styles.mutedSmall}>Τρέχουσα κατάσταση: {orderStatusLabel(selectedOrder.status)}. Δεν έχουν καταγραφεί ακόμη επιμέρους ενημερώσεις.</Text>}
+            </View>
+            <View style={styles.orderInfoBlock}>
+              <Text style={styles.orderInfoTitle}>Προϊόντα</Text>
+              {selectedOrderItems.length ? selectedOrderItems.map((item) => <View key={item.id} style={styles.orderItemRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.productName}>{item.quantity} × {item.product_name_snapshot}</Text>
+                  {item.notes ? <Text style={styles.mutedSmall}>Σημείωση: {item.notes}</Text> : null}
+                  {item.allergens_snapshot?.length ? <Text style={styles.mutedSmall}>Αλλεργιογόνα: {item.allergens_snapshot.join(", ")}</Text> : null}
+                </View>
+                <Text style={styles.orderItemPrice}>{euro(item.line_total_cents)}</Text>
+              </View>) : <Text style={styles.mutedSmall}>Δεν βρέθηκαν γραμμές προϊόντων για αυτή την παραγγελία.</Text>}
+            </View>
+            {selectedOrder.delivery_address_snapshot ? <View style={styles.orderInfoBlock}>
+              <Text style={styles.orderInfoTitle}>Διεύθυνση παράδοσης</Text>
+              <Text style={styles.productName}>{selectedOrder.delivery_address_snapshot.label ?? "Παράδοση"}</Text>
+              <Text style={styles.mutedSmall}>{[selectedOrder.delivery_address_snapshot.line1, selectedOrder.delivery_address_snapshot.line2, selectedOrder.delivery_address_snapshot.city, selectedOrder.delivery_address_snapshot.postal_code].filter(Boolean).join(", ")}</Text>
+              {selectedOrder.delivery_address_snapshot.delivery_instructions ? <Text style={styles.mutedSmall}>Οδηγίες: {selectedOrder.delivery_address_snapshot.delivery_instructions}</Text> : null}
+            </View> : null}
+            <View style={styles.orderInfoBlock}>
+              <Text style={styles.orderInfoTitle}>Χρέωση</Text>
+              <View style={styles.orderPriceLine}><Text style={styles.mutedSmall}>Προϊόντα</Text><Text style={styles.orderBreakdownValue}>{euro(selectedOrder.subtotal_cents)}</Text></View>
+              <View style={styles.orderPriceLine}><Text style={styles.mutedSmall}>Delivery</Text><Text style={styles.orderBreakdownValue}>{euro(selectedOrder.delivery_fee_cents)}</Text></View>
+              {selectedOrder.service_fee_cents > 0 ? <View style={styles.orderPriceLine}><Text style={styles.mutedSmall}>Υπηρεσία</Text><Text style={styles.orderBreakdownValue}>{euro(selectedOrder.service_fee_cents)}</Text></View> : null}
+              {selectedOrder.discount_cents > 0 ? <View style={styles.orderPriceLine}><Text style={styles.mutedSmall}>Έκπτωση</Text><Text style={styles.orderBreakdownValue}>−{euro(selectedOrder.discount_cents)}</Text></View> : null}
+              <View style={[styles.orderPriceLine, styles.orderPriceTotal]}><Text style={styles.orderInfoTitle}>Σύνολο</Text><Text style={styles.orderTotalValue}>{euro(selectedOrder.total_cents)}</Text></View>
+              <Text style={styles.mutedSmall}>Πληρωμή: {selectedOrder.payment_method === "cash_on_delivery" ? "Μετρητά κατά την παράδοση" : selectedOrder.payment_method.replaceAll("_", " ")} · {selectedOrder.payment_status === "due_on_delivery" ? "Προς εξόφληση" : selectedOrder.payment_status.replaceAll("_", " ")}</Text>
+              <Text style={styles.mutedSmall}>Παράδοση: {selectedOrder.fulfillment_method === "platform" ? "Διανομέας E-DELIVERY" : selectedOrder.fulfillment_method === "merchant" ? "Διανομή καταστήματος" : "Συνεργαζόμενο δίκτυο"}</Text>
+            </View>
+          </> : <Text style={styles.error}>Δεν είναι διαθέσιμες οι λεπτομέρειες αυτής της παραγγελίας.</Text>}
+        </View> : orders.length === 0 ? <View style={styles.empty}><Text style={styles.productName}>Δεν έχεις κάνει ακόμη παραγγελία</Text><Text style={styles.mutedSmall}>Οι παραγγελίες σου θα εμφανιστούν εδώ.</Text></View> : orders.map((order) => <Pressable key={order.id} style={styles.orderCard} onPress={() => setSelectedOrderId(order.id)}>
+          <View style={styles.orderHeader}><Text style={styles.productName}>#{order.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.orderStatus}>{orderStatusLabel(order.status)}</Text></View>
           <Text style={styles.total}>{euro(order.total_cents)}</Text>
           <Text style={styles.mutedSmall}>{new Date(order.created_at).toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" })}</Text>
-        </View>)}
+          <Text style={styles.link}>Προβολή λεπτομερειών →</Text>
+        </Pressable>)}
         <Text style={styles.sectionTitle}>Αιτήματα Express</Text>
         {expressRequests.length === 0 ? <Text style={styles.mutedSmall}>Δεν έχεις ακόμη αιτήματα αποστολής.</Text> : expressRequests.map((request) => <View key={request.id} style={styles.requestCard}>
           <View style={styles.orderHeader}><Text style={styles.productName}>Express · #{request.id.slice(0, 8).toUpperCase()}</Text><Text style={styles.orderStatus}>{request.status.replaceAll("_", " ")}</Text></View>
@@ -894,6 +1038,26 @@ const styles = StyleSheet.create({
   priceLine: { color: "#43516A", fontSize: 12, fontWeight: "700" },
   totalLabel: { color: "#14223B", fontSize: 14, fontWeight: "900" },
   orderCard: { backgroundColor: "white", padding: 16, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 6 },
+  orderDetailCard: { backgroundColor: "white", borderRadius: 18, padding: 17, borderWidth: 1, borderColor: "#E5EAF2", gap: 13 },
+  orderDetailHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+  orderDetailTitle: { color: "#182740", fontSize: 22, fontWeight: "900", letterSpacing: -0.7 },
+  orderDetailLoading: { flexDirection: "row", gap: 10, alignItems: "center", paddingVertical: 22 },
+  orderInfoBlock: { borderTopWidth: 1, borderTopColor: "#EDF0F4", paddingTop: 13, gap: 9 },
+  orderInfoTitle: { color: "#182740", fontSize: 12, fontWeight: "900" },
+  orderTimeline: { gap: 0, marginTop: 4 },
+  orderTimelineRow: { flexDirection: "row", gap: 10, minHeight: 48 },
+  orderTimelineMarker: { width: 16, alignItems: "center" },
+  orderTimelineDot: { width: 9, height: 9, borderRadius: 99, backgroundColor: "#CFD5DD", marginTop: 4 },
+  orderTimelineDotCurrent: { backgroundColor: "#E31E24", width: 11, height: 11 },
+  orderTimelineLine: { width: 2, flex: 1, minHeight: 28, backgroundColor: "#E5E9EE", marginTop: 3 },
+  orderTimelineCopy: { flex: 1, gap: 3, paddingBottom: 12 },
+  orderTimelineStatus: { color: "#26364D", fontSize: 11, fontWeight: "800" },
+  orderItemRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F0F2F5" },
+  orderItemPrice: { color: "#182740", fontSize: 12, fontWeight: "900" },
+  orderPriceLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  orderBreakdownValue: { color: "#5D697B", fontSize: 11, fontWeight: "800" },
+  orderPriceTotal: { borderTopWidth: 1, borderTopColor: "#E8ECF2", paddingTop: 10, marginTop: 4 },
+  orderTotalValue: { color: "#E31E24", fontSize: 17, fontWeight: "900" },
   requestCard: { backgroundColor: "white", padding: 15, borderRadius: 15, borderWidth: 1, borderColor: "#E5EAF2", gap: 7 },
   orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
   orderStatus: { color: "#E31E24", fontWeight: "800", fontSize: 10, textTransform: "capitalize" },
