@@ -65,11 +65,13 @@ type OrderItem = {
 type OrderEvent = { id: string; from_status: string | null; to_status: string; reason: string | null; created_at: string };
 type ExpressRequest = { id: string; status: string; quoted_fee_cents: number | null; currency: string; parcel_description: string; parcel_size: string; created_at: string };
 type ServiceRequest = { id: string; status: string; service_title: string; quoted_price_cents: number | null; currency: string; created_at: string; store: { name: string } | null };
+type SupportTicket = { id: string; order_id: string | null; category: string; subject: string; status: string; priority: string; created_at: string; updated_at: string };
+type SupportMessage = { id: string; ticket_id: string; author_user_id: string; message: string; created_at: string };
 type Product = { id: string; name: string; description: string | null; price_cents: number; currency: string; is_available: boolean; allergens: string[]; image_path: string | null };
 type Address = { id: string; label: string; line1: string; city: string; postal_code: string };
 type MenuCategoryRow = { id: string; store_id: string; name: string };
 type StoreCategory = "all" | "food" | "groceries" | "shops";
-type HomeScreen = "stores" | "orders" | "services" | "express";
+type HomeScreen = "stores" | "orders" | "services" | "express" | "support";
 
 const MEDIA_BUCKET = "e-delivery-merchant-media";
 const categoryPhotos: Record<string, string> = {
@@ -103,6 +105,21 @@ const orderStatusLabels: Record<string, string> = {
   cancelled: "Ακυρώθηκε"
 };
 const orderStatusLabel = (status: string) => orderStatusLabels[status] ?? status.replaceAll("_", " ");
+const supportStatusLabels: Record<string, string> = {
+  open: "Ανοιχτό",
+  in_progress: "Σε εξέλιξη",
+  waiting_customer: "Αναμονή απάντησης",
+  resolved: "Επιλύθηκε",
+  closed: "Κλειστό"
+};
+const supportStatusLabel = (status: string) => supportStatusLabels[status] ?? status.replaceAll("_", " ");
+const supportCategoryLabels: Record<string, string> = {
+  order: "Παραγγελία",
+  delivery: "Παράδοση",
+  payment: "Πληρωμή",
+  account: "Λογαριασμός",
+  other: "Άλλο"
+};
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -135,6 +152,16 @@ export default function App() {
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
   const [expressRequests, setExpressRequests] = useState<ExpressRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [selectedSupportTicketId, setSelectedSupportTicketId] = useState("");
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [supportCategory, setSupportCategory] = useState("order");
+  const [supportOrderId, setSupportOrderId] = useState("");
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportInitialMessage, setSupportInitialMessage] = useState("");
+  const [supportReply, setSupportReply] = useState("");
   const [serviceProviders, setServiceProviders] = useState<Store[]>([]);
   const [serviceProvider, setServiceProvider] = useState<Store | null>(null);
   const [screen, setScreen] = useState<HomeScreen>("stores");
@@ -187,6 +214,10 @@ export default function App() {
         setSelectedOrder(null);
         setSelectedOrderItems([]);
         setSelectedOrderEvents([]);
+        setSupportTickets([]);
+        setSelectedSupportTicketId("");
+        setSupportMessages([]);
+        setSupportReply("");
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -239,6 +270,9 @@ export default function App() {
       setSelectedOrder(null);
       setSelectedOrderItems([]);
       setSelectedOrderEvents([]);
+      setSupportTickets([]);
+      setSelectedSupportTicketId("");
+      setSupportMessages([]);
       return;
     }
 
@@ -248,8 +282,9 @@ export default function App() {
       client.from("orders").select("id,status,total_cents,currency,created_at").order("created_at", { ascending: false }).limit(30),
       client.from("express_deliveries").select("id,status,quoted_fee_cents,currency,parcel_description,parcel_size,created_at").order("created_at", { ascending: false }).limit(30),
       client.from("service_bookings").select("id,status,service_title,quoted_price_cents,currency,created_at,store:stores(name)").order("created_at", { ascending: false }).limit(30),
-      client.from("customer_favorites").select("store_id").order("created_at", { ascending: false }).limit(500)
-    ]).then(([addressResult, orderResult, expressResult, bookingResult, favoriteResult]) => {
+      client.from("customer_favorites").select("store_id").order("created_at", { ascending: false }).limit(500),
+      client.from("support_tickets").select("id,order_id,category,subject,status,priority,created_at,updated_at").order("updated_at", { ascending: false }).limit(50)
+    ]).then(([addressResult, orderResult, expressResult, bookingResult, favoriteResult, supportResult]) => {
       if (!active) return;
       if (addressResult.error) setError("Δεν ήταν δυνατή η φόρτωση διευθύνσεων.");
       else {
@@ -271,9 +306,34 @@ export default function App() {
       else setServiceRequests((bookingResult.data ?? []) as unknown as ServiceRequest[]);
       if (!favoriteResult.error) setFavoriteStoreIds((favoriteResult.data ?? []).map((row) => row.store_id));
       else setFavoriteStoreIds([]);
+      if (!supportResult.error) setSupportTickets((supportResult.data ?? []) as SupportTicket[]);
+      else setSupportTickets([]);
     });
     return () => { active = false; };
   }, [session]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !session || !selectedSupportTicketId) {
+      setSupportMessages([]);
+      setSupportLoading(false);
+      return;
+    }
+    let active = true;
+    setSupportLoading(true);
+    client.from("support_ticket_messages")
+      .select("id,ticket_id,author_user_id,message,created_at")
+      .eq("ticket_id", selectedSupportTicketId)
+      .order("created_at", { ascending: true })
+      .limit(300)
+      .then(({ data, error: queryError }) => {
+        if (!active) return;
+        setSupportLoading(false);
+        if (queryError) setError("Δεν ήταν δυνατή η φόρτωση της συνομιλίας υποστήριξης.");
+        else setSupportMessages((data ?? []) as SupportMessage[]);
+      });
+    return () => { active = false; };
+  }, [session, selectedSupportTicketId]);
 
   useEffect(() => {
     const client = supabase;
@@ -335,6 +395,79 @@ export default function App() {
   const activePostalCode = searchPostalCode.length === 5 ? searchPostalCode : selectedAddress?.postal_code ?? "";
   const deliveryFeeCents = store?.base_delivery_fee_cents ?? 0;
   const totalCents = subtotal + deliveryFeeCents;
+
+  async function loadSupportTickets() {
+    const client = supabase;
+    if (!client || !session) return;
+    const { data, error: queryError } = await client.from("support_tickets")
+      .select("id,order_id,category,subject,status,priority,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(50);
+    if (queryError) {
+      setError("Δεν ήταν δυνατή η φόρτωση των αιτημάτων υποστήριξης. Έλεγξε ότι εφαρμόστηκε η migration 010.");
+      return;
+    }
+    setSupportTickets((data ?? []) as SupportTicket[]);
+  }
+
+  async function createSupportTicket() {
+    const client = supabase;
+    if (!session) { setShowAuth(true); setError("Συνδέσου για να επικοινωνήσεις με την υποστήριξη."); return; }
+    if (!client) return;
+    if (supportSubject.trim().length < 3 || supportInitialMessage.trim().length < 10) {
+      setError("Συμπλήρωσε θέμα και περιγραφή τουλάχιστον 10 χαρακτήρων.");
+      return;
+    }
+    setSupportSubmitting(true);
+    setError("");
+    const { data, error: requestError } = await client.rpc("create_support_ticket", {
+      p_order_id: supportOrderId || null,
+      p_category: supportCategory,
+      p_subject: supportSubject.trim(),
+      p_message: supportInitialMessage.trim()
+    });
+    setSupportSubmitting(false);
+    if (requestError || !data) {
+      setError("Το αίτημα υποστήριξης δεν δημιουργήθηκε. Έλεγξε τη migration 010 και δοκίμασε ξανά.");
+      return;
+    }
+    const ticketId = String(data);
+    setSupportSubject("");
+    setSupportInitialMessage("");
+    setSupportOrderId("");
+    setSelectedSupportTicketId(ticketId);
+    await loadSupportTickets();
+    setError("");
+  }
+
+  async function sendSupportReply() {
+    const client = supabase;
+    if (!client || !session || !selectedSupportTicketId) return;
+    if (supportReply.trim().length < 1) {
+      setError("Γράψε ένα μήνυμα πριν από την αποστολή.");
+      return;
+    }
+    setSupportSubmitting(true);
+    setError("");
+    const { error: sendError } = await client.from("support_ticket_messages").insert({
+      ticket_id: selectedSupportTicketId,
+      author_user_id: session.user.id,
+      message: supportReply.trim()
+    });
+    setSupportSubmitting(false);
+    if (sendError) {
+      setError("Το μήνυμα δεν στάλθηκε. Το αίτημα μπορεί να έχει κλείσει ή να χρειάζεται απάντηση της ομάδας.");
+      return;
+    }
+    setSupportReply("");
+    await loadSupportTickets();
+    const { data } = await client.from("support_ticket_messages")
+      .select("id,ticket_id,author_user_id,message,created_at")
+      .eq("ticket_id", selectedSupportTicketId)
+      .order("created_at", { ascending: true })
+      .limit(300);
+    setSupportMessages((data ?? []) as SupportMessage[]);
+  }
 
   async function toggleFavorite(candidate: Store) {
     const client = supabase;
