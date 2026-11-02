@@ -19,7 +19,7 @@ export default async function SupportPage() {
   }
 
   const { data, error } = await supabase.from("support_tickets")
-    .select("id,customer_id,order_id,category,subject,status,priority,assigned_to,created_at,updated_at,customer:profiles(full_name,phone),order:orders(id,status)")
+    .select("id,customer_id,order_id,category,subject,status,priority,assigned_to,created_at,updated_at,customer:profiles(full_name,phone)")
     .order("updated_at", { ascending: false })
     .limit(300);
 
