@@ -54,6 +54,20 @@ create table public.support_ticket_messages (
 create index support_ticket_messages_thread_idx
   on public.support_ticket_messages(ticket_id, created_at);
 
+-- Support agents can see only the basic profile of customers who have an actual support case.
+create policy profiles_read_support_ticket_customer
+on public.profiles
+for select
+to authenticated
+using (
+  private.is_support_staff()
+  and exists (
+    select 1
+    from public.support_tickets t
+    where t.customer_id = profiles.id
+  )
+);
+
 alter table public.support_tickets enable row level security;
 alter table public.support_ticket_messages enable row level security;
 
