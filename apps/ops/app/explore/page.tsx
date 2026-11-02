@@ -15,7 +15,11 @@ type StoreRow = {
   service_postal_codes: string[];
   logo_image_path: string | null;
   cover_image_path: string | null;
+  timezone: string;
+  openStatus?: "open" | "closed" | "unknown";
 };
+
+type StoreHoursRow = { store_id: string; weekday: number; opens_at: string | null; closes_at: string | null; is_closed: boolean };
 
 type SortOption = "recommended" | "delivery" | "preparation" | "minimum";
 type MenuCategoryRow = { id: string; store_id: string; name: string };
@@ -67,6 +71,47 @@ const marketTabs = [
   { key: "groceries", title: "Supermarket", detail: "Καθημερινές αγορές για το σπίτι", image: photos.supermarket, icon: "🛒" },
   { key: "shops", title: "Καταστήματα", detail: "Τοπικά καταστήματα και υπηρεσίες", image: photos.retail, icon: "🛍️" }
 ];
+
+function storeOpenStatus(storeId: string, timezone: string, rows: StoreHoursRow[]): "open" | "closed" | "unknown" {
+  const storeRows = rows.filter((row) => row.store_id === storeId);
+  if (storeRows.length < 14) return "unknown";
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone || "Europe/Athens",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(new Date()).reduce<Record<string, string>>((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+    const weekdays: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekdayLabel = parts.weekday;
+    if (!weekdayLabel || !(weekdayLabel in weekdays)) return "unknown";
+    const today = weekdays[weekdayLabel];
+    if (today === undefined) return "unknown";
+    const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+    const previousDay = (today + 6) % 7;
+    const toMinutes = (value: string) => {
+      const timeParts = value.slice(0, 5).split(":");
+      const hours = Number(timeParts[0]);
+      const minutes = Number(timeParts[1]);
+      return hours * 60 + minutes;
+    };
+    const open = storeRows.some((row) => {
+      if (row.is_closed || !row.opens_at || !row.closes_at) return false;
+      const start = toMinutes(row.opens_at);
+      const end = toMinutes(row.closes_at);
+      if (end > start) return row.weekday === today && nowMinutes >= start && nowMinutes < end;
+      return (row.weekday === today && nowMinutes >= start) ||
+        (row.weekday === previousDay && nowMinutes < end);
+    });
+    return open ? "open" : "closed";
+  } catch {
+    return "unknown";
+  }
+}
 
 function publicMediaUrl(path: string | null | undefined) {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -139,7 +184,7 @@ export default async function ExplorePage({
   if (supabase) {
     const [storeResult, categoryResult] = await Promise.all([
       supabase.from("stores")
-        .select("id,name,description,city,region,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,service_postal_codes,logo_image_path,cover_image_path")
+        .select("id,name,description,city,region,store_type,minimum_order_cents,base_delivery_fee_cents,prep_time_minutes,service_postal_codes,logo_image_path,cover_image_path,timezone")
         .eq("is_active", true)
         .eq("accepts_orders", true)
         .order("name")
@@ -153,6 +198,16 @@ export default async function ExplorePage({
     loadError = Boolean(storeResult.error);
     stores = (storeResult.data ?? []) as StoreRow[];
     if (!categoryResult.error) menuCategories = (categoryResult.data ?? []) as MenuCategoryRow[];
+    if (stores.length) {
+      const { data: hoursRows, error: hoursError } = await supabase.from("store_hours")
+        .select("store_id,weekday,opens_at,closes_at,is_closed")
+        .in("store_id", stores.map((store) => store.id))
+        .limit(3000);
+      if (!hoursError) {
+        const hours = (hoursRows ?? []) as StoreHoursRow[];
+        stores = stores.map((store) => ({ ...store, openStatus: storeOpenStatus(store.id, store.timezone, hours) }));
+      }
+    }
   } else {
     loadError = true;
   }
@@ -337,6 +392,7 @@ export default async function ExplorePage({
                   <div className="store-card-body">
                     <h3>{store.name}</h3>
                     <p>{store.description ?? `${store.city}, ${store.region}`}</p>
+                    {store.openStatus === "open" ? <span className="store-hours-status is-open">Ανοιχτό τώρα</span> : store.openStatus === "closed" ? <span className="store-hours-status is-closed">Κλειστό τώρα</span> : null}
                     <div className="store-card-metadata">
                       <span>Προετοιμασία ~{store.prep_time_minutes}′</span>
                       <span>Ελάχιστη {euro(store.minimum_order_cents)}</span>

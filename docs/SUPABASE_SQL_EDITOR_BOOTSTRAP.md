@@ -46,6 +46,7 @@ In Supabase SQL Editor, create a new query for each migration, paste the complet
 5. [005 — Partner applications](../supabase/migrations/202611010005_partner_applications.sql)
 6. [006 — Partner application RPC server-only permissions](../supabase/migrations/202611020006_partner_application_rpc_server_only.sql)
 7. [007 — Merchant media and storage policies](../supabase/migrations/202611020007_merchant_media.sql)
+8. [008 — Weekly merchant opening hours](../supabase/migrations/202611020008_store_hours.sql)
 
 Do not paste all seven files into one SQL Editor execution. In particular, migration 002 must commit before migration 003 uses the enum value it adds.
 
@@ -83,6 +84,17 @@ where id = 'e-delivery-merchant-media';
 ```
 
 Expected: both store-image columns are present, and the `e-delivery-merchant-media` bucket is public with a 5 MB upload limit and JPEG/PNG/WebP MIME types.
+
+After migration 008, verify configured schedules with:
+
+```sql
+select store_id, count(*) as configured_weekday_slots
+from public.store_hours
+group by store_id
+order by store_id;
+```
+
+A fully saved weekly schedule contains 14 rows per store (seven weekdays and two slots per day). A store with no rows has not configured its hours and must not be labelled open or closed.
 
 ## 5. Finish with real-account verification
 

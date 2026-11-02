@@ -11,3 +11,26 @@
 .catalog-edit-actions .primary-button,.catalog-edit-actions .secondary-button{margin:0;min-height:35px;padding:8px 12px;font-size:10px}
 .catalog-product-info small{display:block;color:#7e8791;font-size:10px;margin-top:5px;line-height:1.5}
 @media(max-width:560px){.catalog-edit-fields{grid-template-columns:1fr}.catalog-edit-actions>*{flex:1}}
+
+.merchant-hours-panel{margin:18px 0;padding:20px;border:1px solid var(--line);border-radius:16px;background:#fbfcfd}
+.merchant-hours-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.merchant-hours-heading .eyebrow{margin:0 0 6px}
+.merchant-hours-heading h3{font:750 16px Manrope;margin:0 0 6px;color:var(--ink)}
+.merchant-hours-heading p:not(.eyebrow){font-size:11px;line-height:1.55;color:var(--muted);margin:0;max-width:660px}
+.hours-configured,.hours-unconfigured{flex-shrink:0;padding:7px 10px;border-radius:99px;font-size:10px;font-weight:800}
+.hours-configured{color:#16784f;background:#e9f8f0}
+.hours-unconfigured{color:#687487;background:#eef1f5}
+.merchant-hours-list{display:grid;gap:8px}
+.merchant-hours-day{display:grid;grid-template-columns:minmax(115px,.55fr) minmax(0,1.45fr);align-items:center;gap:12px;padding:11px 12px;border:1px solid #e8ecf1;background:#fff;border-radius:12px}
+.merchant-hours-day-toggle{display:flex;align-items:center;gap:9px;min-height:32px;color:#263247;font-size:12px}
+.merchant-hours-day-toggle input{accent-color:#E31E24;width:16px;height:16px}
+.merchant-hours-closed{font-size:11px;color:#8a93a0}
+.merchant-hours-slots{display:grid;gap:8px}
+.merchant-hours-slot{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.merchant-hours-slot label{display:grid;gap:4px;color:#697486;font-size:10px;font-weight:750}
+.merchant-hours-slot input{width:118px;border:1px solid #dfe5ec;border-radius:9px;padding:8px 9px;background:#fff;color:var(--ink);font:inherit;font-size:11px}
+.merchant-hours-slot button,.merchant-hours-slots>button{font-size:10px;padding:7px 9px;min-height:32px}
+.merchant-hours-actions{display:flex;justify-content:flex-end;margin-top:14px}
+.merchant-hours-actions .primary-button{margin:0;padding:10px 15px;font-size:11px}
+.hours-note{font-size:10px;line-height:1.5;color:#798494;margin:10px 0 0}
+@media(max-width:620px){.merchant-hours-heading{flex-direction:column}.merchant-hours-day{grid-template-columns:1fr;gap:8px}.merchant-hours-slot input{width:100%}.merchant-hours-slot label{flex:1;min-width:105px}}
