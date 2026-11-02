@@ -221,12 +221,12 @@ $$;
 
 create or replace function private.is_merchant_active(p_merchant_id uuid)
 returns boolean language sql stable security definer set search_path = ''
-as $
+as $$
   select exists (
     select 1 from public.merchants m
     where m.id = p_merchant_id and m.status = 'active'
   );
-$;
+$$;
 
 revoke all on function private.is_merchant_active(uuid) from public, anon, authenticated;
 grant execute on function private.is_merchant_active(uuid) to anon, authenticated;
@@ -296,7 +296,7 @@ create trigger on_auth_user_created
 
 create or replace function private.validate_product_category()
 returns trigger language plpgsql security definer set search_path = ''
-as $
+as $$
 begin
   if new.category_id is not null and not exists (
     select 1 from public.categories c
@@ -306,7 +306,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 revoke all on function private.validate_product_category() from public, anon, authenticated;
 create trigger products_category_guard
   before insert or update of category_id, store_id on public.products
