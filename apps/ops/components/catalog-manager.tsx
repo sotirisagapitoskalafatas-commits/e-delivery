@@ -4,6 +4,39 @@ import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Store = { id: string; name: string; city: string; logo_image_path?: string | null; cover_image_path?: string | null };
+type ScheduleSlot = { opens_at: string; closes_at: string };
+type DaySchedule = { isClosed: boolean; slots: ScheduleSlot[] };
+type StoreHourRow = { weekday: number; slot_order: number; opens_at: string | null; closes_at: string | null; is_closed: boolean };
+const weekdays = [
+  { weekday: 1, label: "Δευτέρα" },
+  { weekday: 2, label: "Τρίτη" },
+  { weekday: 3, label: "Τετάρτη" },
+  { weekday: 4, label: "Πέμπτη" },
+  { weekday: 5, label: "Παρασκευή" },
+  { weekday: 6, label: "Σάββατο" },
+  { weekday: 0, label: "Κυριακή" }
+];
+function createEmptySchedule(): DaySchedule[] {
+  return Array.from({ length: 7 }, () => ({ isClosed: true, slots: [{ opens_at: "09:00", closes_at: "17:00" }] }));
+}
+function timeMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+function slotsOverlap(slots: ScheduleSlot[]) {
+  const ranges = slots.map((slot) => {
+    const start = timeMinutes(slot.opens_at);
+    const end = timeMinutes(slot.closes_at);
+    return end > start ? [[start, end]] : [[start, 1440], [0, end]];
+  });
+  for (let i = 0; i < ranges.length; i += 1) {
+    for (let j = i + 1; j < ranges.length; j += 1) {
+      if (ranges[i].some(([a, b]) => ranges[j].some(([x, y]) => a < y && x < b))) return true;
+    }
+  }
+  return false;
+}
+
 type Product = {
   id: string;
   name: string;
@@ -48,6 +81,11 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
   const [editPrice, setEditPrice] = useState("");
   const [editAllergensText, setEditAllergensText] = useState("");
   const [storeMedia, setStoreMedia] = useState<Record<string, { logo_image_path: string | null; cover_image_path: string | null }>>({});
+  const [schedule, setSchedule] = useState<DaySchedule[]>(createEmptySchedule);
+  const [hoursLoading, setHoursLoading] = useState(false);
+  const [hoursSaving, setHoursSaving] = useState(false);
+  const [hoursConfigured, setHoursConfigured] = useState(false);
+  const [hoursMessage, setHoursMessage] = useState("");
   const activeStore = stores.find((store) => store.id === storeId);
   const activeMedia = {
     logo_image_path: storeMedia[storeId]?.logo_image_path ?? activeStore?.logo_image_path ?? null,
@@ -72,7 +110,121 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
     setMessage("");
   }
 
-  useEffect(() => { void loadProducts(); }, [storeId]);
+  async function loadStoreHours() {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase || !storeId) { setSchedule(createEmptySchedule()); setHoursConfigured(false); return; }
+    setHoursLoading(true);
+    setHoursMessage("");
+    const { data, error } = await supabase.from("store_hours")
+      .select("weekday,slot_order,opens_at,closes_at,is_closed")
+      .eq("store_id", storeId)
+      .order("weekday")
+      .order("slot_order");
+    setHoursLoading(false);
+    if (error) {
+      setSchedule(createEmptySchedule());
+      setHoursConfigured(false);
+      setHoursMessage("Το ωράριο δεν φορτώθηκε. Έλεγξε ότι εφαρμόστηκε η migration 008 και τα δικαιώματα καταστήματος.");
+      return;
+    }
+    const grouped: Record<number, Record<number, ScheduleSlot>> = {};
+    for (const row of (data ?? []) as StoreHourRow[]) {
+      if (row.is_closed || !row.opens_at || !row.closes_at) continue;
+      grouped[row.weekday] ??= {};
+      grouped[row.weekday][row.slot_order] = {
+        opens_at: row.opens_at.slice(0, 5),
+        closes_at: row.closes_at.slice(0, 5)
+      };
+    }
+    const next = Array.from({ length: 7 }, (_, weekday) => {
+      const slots = [grouped[weekday]?.[0], grouped[weekday]?.[1]].filter((slot): slot is ScheduleSlot => Boolean(slot));
+      return { isClosed: slots.length === 0, slots: slots.length ? slots : [{ opens_at: "09:00", closes_at: "17:00" }] };
+    });
+    setSchedule(next);
+    setHoursConfigured((data ?? []).length > 0);
+    setHoursMessage((data ?? []).length ? "Το εβδομαδιαίο ωράριο έχει φορτωθεί." : "Δεν έχει καταχωρηθεί ωράριο. Το κατάστημα θα εμφανίζεται χωρίς ένδειξη ανοιχτού/κλειστού.");
+  }
+
+  function updateScheduleSlot(weekday: number, slotIndex: number, field: keyof ScheduleSlot, value: string) {
+    setSchedule((current) => current.map((day, index) => index === weekday
+      ? { ...day, slots: day.slots.map((slot, i) => i === slotIndex ? { ...slot, [field]: value } : slot) }
+      : day));
+  }
+
+  function setDayOpen(weekday: number, isOpen: boolean) {
+    setSchedule((current) => current.map((day, index) => index === weekday
+      ? { ...day, isClosed: !isOpen, slots: day.slots.length ? day.slots : [{ opens_at: "09:00", closes_at: "17:00" }] }
+      : day));
+  }
+
+  function addScheduleSlot(weekday: number) {
+    setSchedule((current) => current.map((day, index) => index === weekday && day.slots.length < 2
+      ? { ...day, slots: [...day.slots, { opens_at: "13:00", closes_at: "17:00" }] }
+      : day));
+  }
+
+  function removeScheduleSlot(weekday: number, slotIndex: number) {
+    setSchedule((current) => current.map((day, index) => index === weekday
+      ? { ...day, slots: day.slots.filter((_, i) => i !== slotIndex) }
+      : day));
+  }
+
+  async function saveStoreHours() {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase || !storeId || !canManage) return;
+    const payload: Array<{
+      store_id: string; weekday: number; slot_order: number;
+      opens_at: string | null; closes_at: string | null; is_closed: boolean; updated_at: string;
+    }> = [];
+    const updatedAt = new Date().toISOString();
+
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const day = schedule[weekday];
+      if (!day || day.isClosed) {
+        for (let slot_order = 0; slot_order < 2; slot_order += 1) {
+          payload.push({ store_id: storeId, weekday, slot_order, opens_at: null, closes_at: null, is_closed: true, updated_at: updatedAt });
+        }
+        continue;
+      }
+      if (day.slots.length < 1 || day.slots.length > 2) {
+        setHoursMessage("Κάθε ανοιχτή ημέρα χρειάζεται ένα ή δύο χρονικά διαστήματα.");
+        return;
+      }
+      for (const slot of day.slots) {
+        if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(slot.opens_at) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(slot.closes_at) || slot.opens_at === slot.closes_at) {
+          setHoursMessage("Συμπλήρωσε έγκυρες ώρες έναρξης και λήξης. Ίδιες ώρες δεν αποτελούν έγκυρο διάστημα.");
+          return;
+        }
+      }
+      if (slotsOverlap(day.slots)) {
+        setHoursMessage("Τα δύο χρονικά διαστήματα της ίδιας ημέρας δεν πρέπει να επικαλύπτονται.");
+        return;
+      }
+      for (let slot_order = 0; slot_order < 2; slot_order += 1) {
+        const slot = day.slots[slot_order];
+        payload.push({
+          store_id: storeId, weekday, slot_order,
+          opens_at: slot?.opens_at ?? null,
+          closes_at: slot?.closes_at ?? null,
+          is_closed: !slot,
+          updated_at: updatedAt
+        });
+      }
+    }
+
+    setHoursSaving(true);
+    setHoursMessage("");
+    const { error } = await supabase.from("store_hours").upsert(payload, { onConflict: "store_id,weekday,slot_order" });
+    setHoursSaving(false);
+    if (error) {
+      setHoursMessage("Το ωράριο δεν αποθηκεύτηκε. Έλεγξε τη migration 008 και τα δικαιώματα ιδιοκτήτη/διαχειριστή.");
+      return;
+    }
+    setHoursConfigured(true);
+    setHoursMessage("Το εβδομαδιαίο ωράριο αποθηκεύτηκε.");
+  }
+
+  useEffect(() => { void loadProducts(); void loadStoreHours(); }, [storeId]);
 
   function validateImage(file: File) {
     if (!acceptedImageTypes.has(file.type)) { setMessage("Χρησιμοποίησε εικόνα JPG, PNG ή WebP."); return false; }
@@ -260,6 +412,34 @@ export function CatalogManager({ stores, canManage }: { stores: Store[]; canMana
             <label className="media-upload-button">{uploadingMedia === "cover_image_path" ? "Μεταφόρτωση…" : "Ανέβασε εξώφυλλο"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingMedia)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadStoreImage("cover_image_path", file); event.currentTarget.value = ""; }} /></label>
           </div>
         </div>
+      </section> : null}
+      {canManage ? <section className="merchant-hours-panel">
+        <div className="merchant-hours-heading">
+          <div><p className="eyebrow">STORE AVAILABILITY</p><h3>Εβδομαδιαίο ωράριο</h3><p>Καταχώρησε τις ημέρες και τα διαστήματα λειτουργίας. Υποστηρίζονται έως δύο διαστήματα ανά ημέρα και ωράρια που περνούν τα μεσάνυχτα.</p></div>
+          <span className={hoursConfigured ? "hours-configured" : "hours-unconfigured"}>{hoursConfigured ? "Ωράριο καταχωρημένο" : "Δεν έχει οριστεί"}</span>
+        </div>
+        {hoursLoading ? <p className="hours-note">Φόρτωση ωραρίου…</p> : <div className="merchant-hours-list">
+          {weekdays.map(({ weekday, label }) => {
+            const day = schedule[weekday] ?? { isClosed: true, slots: [] };
+            return <div className="merchant-hours-day" key={weekday}>
+              <label className="merchant-hours-day-toggle">
+                <input type="checkbox" checked={!day.isClosed} onChange={(event) => setDayOpen(weekday, event.target.checked)} />
+                <strong>{label}</strong>
+              </label>
+              {day.isClosed ? <span className="merchant-hours-closed">Κλειστό</span> : <div className="merchant-hours-slots">
+                {day.slots.map((slot, slotIndex) => <div className="merchant-hours-slot" key={slotIndex}>
+                  <label>Από<input type="time" value={slot.opens_at} onChange={(event) => updateScheduleSlot(weekday, slotIndex, "opens_at", event.target.value)} /></label>
+                  <label>Έως<input type="time" value={slot.closes_at} onChange={(event) => updateScheduleSlot(weekday, slotIndex, "closes_at", event.target.value)} /></label>
+                  {slotIndex > 0 ? <button type="button" className="table-cancel" onClick={() => removeScheduleSlot(weekday, slotIndex)}>Αφαίρεση</button> : null}
+                </div>)}
+                {day.slots.length < 2 ? <button type="button" className="table-action" onClick={() => addScheduleSlot(weekday)}>+ Προσθήκη διαστήματος</button> : null}
+              </div>}
+            </div>;
+          })}
+        </div>}
+        {hoursMessage ? <p className="hours-note" role="status">{hoursMessage}</p> : null}
+        <div className="merchant-hours-actions"><button type="button" className="primary-button" disabled={hoursLoading || hoursSaving} onClick={() => void saveStoreHours()}>{hoursSaving ? "Αποθήκευση…" : "Αποθήκευση ωραρίου"}</button></div>
+        <p className="hours-note">Χωρίς αποθηκευμένο ωράριο δεν εμφανίζεται ένδειξη «Ανοιχτό τώρα» ή «Κλειστό τώρα». Οι αργίες και οι έκτακτες αλλαγές δεν υποστηρίζονται ακόμη.</p>
       </section> : null}
       {loading ? <p className="catalog-empty">Φόρτωση προϊόντων…</p> : products.length === 0 ? <div className="catalog-empty"><h3>Ο κατάλογος είναι ακόμη κενός</h3><p>Πρόσθεσε τα πρώτα πραγματικά προϊόντα και τις τιμές τους.</p></div> : <div className="catalog-list">
         {products.map((product) => <article className="catalog-product" key={product.id}>
